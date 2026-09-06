@@ -1,4 +1,4 @@
-# chat_app
+# Seyra
 
 A new Flutter project.
 
