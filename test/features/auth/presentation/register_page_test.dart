@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:seyra/core/errors/result.dart';
+import 'package:seyra/core/theme/app_theme.dart';
 import 'package:seyra/features/auth/domain/entities/auth_session.dart';
 import 'package:seyra/features/auth/domain/failures/auth_failures.dart';
 import 'package:seyra/features/auth/domain/repositories/auth_repository.dart';
@@ -13,6 +14,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light,
         home: RegisterPage(
           registerUseCase: RegisterUseCase(_FakeAuthRepository()),
         ),
@@ -30,6 +32,7 @@ void main() {
   testWidgets('shows mismatch error when passwords differ', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light,
         home: RegisterPage(
           registerUseCase: RegisterUseCase(_FakeAuthRepository()),
         ),
@@ -54,11 +57,10 @@ void main() {
     expect(find.text('Passwords do not match'), findsOneWidget);
   });
 
-  testWidgets('shows unavailable message when authentication is not connected', (
-    tester,
-  ) async {
+  testWidgets('shows an error when registration fails', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light,
         home: RegisterPage(
           registerUseCase: RegisterUseCase(_FakeAuthRepository()),
         ),
@@ -80,7 +82,7 @@ void main() {
     await tester.tap(find.byKey(const Key('register_submit_button')));
     await tester.pump();
 
-    expect(find.text('Authentication is not connected yet'), findsOneWidget);
+    expect(find.text('Username is already taken'), findsOneWidget);
   });
 }
 
@@ -98,7 +100,7 @@ final class _FakeAuthRepository implements AuthRepository {
     required String username,
     required String password,
   }) async {
-    return const FailureResult(AuthUnavailableFailure());
+    return const FailureResult(UsernameTakenFailure());
   }
 
   @override

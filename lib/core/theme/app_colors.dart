@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
 
-/// Brand color tokens. Full visual design comes later.
+/// Brand color tokens. Dark counterparts can be added later.
 abstract final class AppColors {
-  static const Color primary = Color(0xFF1E6FE3);
+  static const Color primary = Color(0xFF2F6FED);
+  static const Color primaryDark = Color(0xFF1E4FC0);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color surfaceMuted = Color(0xFFF7F9FC);
+  static const Color textPrimary = Color(0xFF111827);
+  static const Color textSecondary = Color(0xFF6B7280);
+  static const Color fieldBorder = Color(0xFFE5E7EB);
+  static const Color wave = Color(0xFFDCE8FF);
+}
+
+abstract final class AppAssets {
+  static const seyraIcon = 'assets/branding/seyra_icon.jpg';
 }

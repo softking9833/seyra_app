@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:seyra/core/errors/result.dart';
+import 'package:seyra/features/auth/domain/entities/auth_session.dart';
 import 'package:seyra/features/auth/domain/usecases/register_use_case.dart';
+import 'package:seyra/features/auth/presentation/widgets/auth_screen_scaffold.dart';
 import 'package:seyra/features/auth/presentation/widgets/auth_text_field.dart';
+import 'package:seyra/features/auth/presentation/widgets/seyra_auth_header.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({
     super.key,
     required this.registerUseCase,
     this.onSignIn,
+    this.onAuthenticated,
   });
 
   final RegisterUseCase registerUseCase;
   final VoidCallback? onSignIn;
+  final ValueChanged<AuthSession>? onAuthenticated;
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
@@ -49,106 +54,134 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
-    setState(() {
-      _submitting = false;
-      _errorMessage = switch (result) {
-        FailureResult(:final failure) => failure.message,
-        Success() => null,
-      };
-    });
+    switch (result) {
+      case FailureResult(:final failure):
+        setState(() {
+          _submitting = false;
+          _errorMessage = failure.message;
+        });
+      case Success(:final value):
+        setState(() => _submitting = false);
+        widget.onAuthenticated?.call(value);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create account')),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                AuthTextField(
-                  key: const Key('register_username_field'),
-                  controller: _usernameController,
-                  label: 'Username',
-                  enabled: !_submitting,
-                  textInputAction: TextInputAction.next,
-                  autofillHints: const [AutofillHints.newUsername],
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Username is required';
-                    }
-                    return null;
-                  },
+    return AuthScreenScaffold(
+      showBack: Navigator.of(context).canPop(),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SeyraAuthHeader(
+              subtitle:
+                  'Create your account. Join Seyra and start your secure messaging journey.',
+            ),
+            const SizedBox(height: 28),
+            AuthTextField(
+              key: const Key('register_username_field'),
+              controller: _usernameController,
+              label: 'Username',
+              prefixIcon: Icons.person_outline,
+              enabled: !_submitting,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.newUsername],
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Username is required';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+            AuthTextField(
+              key: const Key('register_password_field'),
+              controller: _passwordController,
+              label: 'Password',
+              prefixIcon: Icons.lock_outline,
+              obscureable: true,
+              enabled: !_submitting,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.newPassword],
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Password is required';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+            AuthTextField(
+              key: const Key('register_confirm_password_field'),
+              controller: _confirmPasswordController,
+              label: 'Confirm password',
+              prefixIcon: Icons.lock_outline,
+              obscureable: true,
+              enabled: !_submitting,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.newPassword],
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Confirm password is required';
+                }
+                if (value != _passwordController.text) {
+                  return 'Passwords do not match';
+                }
+                return null;
+              },
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!,
+                key: const Key('register_error_message'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.error,
                 ),
-                const SizedBox(height: 16),
-                AuthTextField(
-                  key: const Key('register_password_field'),
-                  controller: _passwordController,
-                  label: 'Password',
-                  obscureText: true,
-                  enabled: !_submitting,
-                  textInputAction: TextInputAction.next,
-                  autofillHints: const [AutofillHints.newPassword],
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Password is required';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                AuthTextField(
-                  key: const Key('register_confirm_password_field'),
-                  controller: _confirmPasswordController,
-                  label: 'Confirm password',
-                  obscureText: true,
-                  enabled: !_submitting,
-                  textInputAction: TextInputAction.done,
-                  autofillHints: const [AutofillHints.newPassword],
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Confirm password is required';
-                    }
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    _errorMessage!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
+              ),
+            ],
+            const SizedBox(height: 24),
+            FilledButton(
+              key: const Key('register_submit_button'),
+              onPressed: _submitting ? null : _submit,
+              child: _submitting
+                  ? SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.onPrimary,
+                      ),
+                    )
+                  : const Text('Create Account'),
+            ),
+            const SizedBox(height: 16),
+            Text.rich(
+              TextSpan(
+                text: 'Already have an account? ',
+                style: theme.textTheme.bodyMedium,
+                children: [
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: TextButton(
+                      onPressed: _submitting ? null : widget.onSignIn,
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Sign in'),
                     ),
                   ),
                 ],
-                const SizedBox(height: 24),
-                FilledButton(
-                  key: const Key('register_submit_button'),
-                  onPressed: _submitting ? null : _submit,
-                  child: _submitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Create account'),
-                ),
-                TextButton(
-                  onPressed: _submitting ? null : widget.onSignIn,
-                  child: const Text('Already have an account? Sign in'),
-                ),
-              ],
+              ),
+              textAlign: TextAlign.center,
             ),
-          ),
+          ],
         ),
       ),
     );
