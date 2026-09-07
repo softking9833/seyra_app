@@ -1,4 +1,6 @@
 /// Network transport boundary.
 ///
-/// No backend protocol is chosen yet. Do not call this from UI.
+/// Protocol is not locked (HTTP, gRPC, or other).
+/// Staging and production implementations must use TLS.
+/// Do not call this from UI.
 abstract interface class ApiClient {}
