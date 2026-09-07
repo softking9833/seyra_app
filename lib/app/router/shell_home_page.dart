@@ -282,18 +282,14 @@ class _WelcomeView extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.asset(
-                  AppAssets.seyraIcon,
-                  width: 72,
-                  height: 72,
-                  fit: BoxFit.cover,
-                ),
+              Image.asset(
+                AppAssets.seyraLogo,
+                height: 64,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+                semanticLabel: AppConstants.appName,
               ),
               const SizedBox(height: 16),
-              Text(AppConstants.appName, style: theme.textTheme.headlineMedium),
-              const SizedBox(height: 8),
               Text(
                 'Private. Secure. Yours.',
                 style: theme.textTheme.bodyMedium,

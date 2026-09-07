@@ -5,7 +5,9 @@ A future backend may be first-party HTTP, gRPC, or another transport as long as
 this contract is preserved. Do not couple the auth domain to Firebase, Auth0,
 Supabase, or any other vendor.
 
-No backend is connected in this step.
+The first-party Go server implements this contract under `backend/`.
+Development may use HTTP on the local machine. Staging and production must use TLS.
+
 
 
 ## Transport
@@ -13,9 +15,16 @@ No backend is connected in this step.
 - Versioned paths under `/v1/auth`.
 - JSON request/response bodies unless noted.
 - Production and staging **must** use TLS (`https`).
-- Development defaults to `https://127.0.0.1:8443` via `SEYRA_API_BASE_URL`.
-- Configure at build time with `--dart-define=SEYRA_ENV=` and
-  `--dart-define=SEYRA_API_BASE_URL=`. Never commit production secrets.
+- Development defaults to `http://10.0.2.2:8080` (Android emulator → host).
+  Override with `--dart-define=SEYRA_API_BASE_URL=`. Never commit production secrets.
+- Error bodies:
+
+```json
+{ "error": { "code": "invalid_credentials", "message": "Invalid username or password" } }
+```
+
+Codes: `invalid_input`, `invalid_credentials`, `username_taken`, `unauthorized`, `session_expired`.
+Messages must never include passwords or tokens.
 
 
 ## Endpoints
@@ -142,9 +151,6 @@ only in `AppDependencies`. Domain and UI stay unchanged.
 
 ## Not in this step
 
-- Real backend, HTTP client, or vendor SDK
-- Token persistence
+- Account-deletion API
 - Session route guards
-- Account-deletion UI
-- Password hashing on device
 - E2E encryption

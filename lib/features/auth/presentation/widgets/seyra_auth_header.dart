@@ -16,18 +16,14 @@ class SeyraAuthHeader extends StatelessWidget {
 
     return Column(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Image.asset(
-            AppAssets.seyraIcon,
-            width: 76,
-            height: 76,
-            fit: BoxFit.cover,
-          ),
+        Image.asset(
+          AppAssets.seyraLogo,
+          height: 56,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          semanticLabel: AppConstants.appName,
         ),
         const SizedBox(height: 16),
-        Text(AppConstants.appName, style: theme.textTheme.headlineMedium),
-        const SizedBox(height: 8),
         Text(
           subtitle,
           textAlign: TextAlign.center,

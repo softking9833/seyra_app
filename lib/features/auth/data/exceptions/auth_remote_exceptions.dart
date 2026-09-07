@@ -5,6 +5,7 @@ enum AuthRemoteErrorCode {
   sessionExpired,
   unauthorized,
   network,
+  invalidInput,
 }
 
 final class AuthRemoteException implements Exception {

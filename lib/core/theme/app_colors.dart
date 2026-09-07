@@ -14,4 +14,5 @@ abstract final class AppColors {
 
 abstract final class AppAssets {
   static const seyraIcon = 'assets/branding/seyra_icon.jpg';
+  static const seyraLogo = 'assets/branding/seyra_logo.webp';
 }

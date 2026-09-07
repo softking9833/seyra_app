@@ -4,21 +4,31 @@ enum AppEnvironment {
   production,
 }
 
+enum AuthBackendMode {
+  mock,
+  http,
+}
+
 /// Runtime backend configuration. Secrets must not be stored here.
 ///
 /// Set at build time:
 /// `--dart-define=SEYRA_ENV=production`
 /// `--dart-define=SEYRA_API_BASE_URL=https://api.example.invalid`
+/// `--dart-define=SEYRA_AUTH_MODE=http` (or `mock` for the in-memory demo)
 final class AppConfig {
   const AppConfig({
     required this.environment,
     required this.apiBaseUrl,
+    this.authBackendMode = AuthBackendMode.http,
   });
 
   final AppEnvironment environment;
   final String apiBaseUrl;
+  final AuthBackendMode authBackendMode;
 
-  static const defaultDevelopmentBaseUrl = 'https://127.0.0.1:8443';
+  /// Android emulator loopback to the host machine. iOS simulator / desktop
+  /// should pass `--dart-define=SEYRA_API_BASE_URL=http://127.0.0.1:8080`.
+  static const defaultDevelopmentBaseUrl = 'http://10.0.2.2:8080';
 
   factory AppConfig.fromEnvironment() {
     const envName = String.fromEnvironment(
@@ -29,10 +39,17 @@ final class AppConfig {
       'SEYRA_API_BASE_URL',
       defaultValue: defaultDevelopmentBaseUrl,
     );
+    const authMode = String.fromEnvironment(
+      'SEYRA_AUTH_MODE',
+      defaultValue: 'http',
+    );
 
     return AppConfig(
       environment: _parseEnvironment(envName),
       apiBaseUrl: baseUrl,
+      authBackendMode: authMode == 'mock'
+          ? AuthBackendMode.mock
+          : AuthBackendMode.http,
     );
   }
 
@@ -43,7 +60,7 @@ final class AppConfig {
     );
   }
 
-  /// Staging and production must use HTTPS. Development should too.
+  /// Staging and production must use HTTPS. Development may use HTTP for the local Go server.
   void validate() {
     final uri = Uri.tryParse(apiBaseUrl);
     if (uri == null || uri.host.isEmpty || !uri.hasScheme) {

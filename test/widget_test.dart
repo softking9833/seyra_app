@@ -12,7 +12,7 @@ void main() {
     await tester.pumpWidget(const SeyraApp());
     await tester.pumpAndSettle();
 
-    expect(find.text(AppConstants.appName), findsOneWidget);
+    expect(find.bySemanticsLabel(AppConstants.appName), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
   });
 }

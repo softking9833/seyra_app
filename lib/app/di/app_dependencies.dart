@@ -1,5 +1,8 @@
 import 'package:seyra/core/config/app_config.dart';
+import 'package:seyra/core/network/http_api_client.dart';
+import 'package:seyra/core/storage/flutter_secure_storage_adapter.dart';
 import 'package:seyra/features/auth/data/datasources/auth_remote_data_source.dart';
+import 'package:seyra/features/auth/data/datasources/http_auth_remote_data_source.dart';
 import 'package:seyra/features/auth/data/datasources/mock_auth_remote_data_source.dart';
 import 'package:seyra/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:seyra/features/auth/domain/repositories/auth_repository.dart';
@@ -75,9 +78,7 @@ abstract final class AppDependencies {
 
     authRemoteDataSource =
         remoteDataSource ??
-        MockAuthRemoteDataSource(
-          latency: const Duration(milliseconds: 400),
-        );
+        _createAuthRemoteDataSource();
     authRepository = AuthRepositoryImpl(
       remoteDataSource: authRemoteDataSource,
     );
@@ -109,5 +110,18 @@ abstract final class AppDependencies {
     updateProfileUseCase = UpdateProfileUseCase(profileRepository);
     watchPreferencesUseCase = WatchPreferencesUseCase(profileRepository);
     updatePreferencesUseCase = UpdatePreferencesUseCase(profileRepository);
+  }
+
+  static AuthRemoteDataSource _createAuthRemoteDataSource() {
+    if (appConfig.authBackendMode == AuthBackendMode.mock) {
+      return MockAuthRemoteDataSource(
+        latency: const Duration(milliseconds: 400),
+      );
+    }
+    return HttpAuthRemoteDataSource(
+      apiClient: HttpApiClient(),
+      secureStorage: FlutterSecureStorageAdapter(),
+      baseUrl: Uri.parse(appConfig.apiBaseUrl),
+    );
   }
 }

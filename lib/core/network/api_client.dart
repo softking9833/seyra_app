@@ -1,6 +1,24 @@
 /// Network transport boundary.
 ///
-/// Protocol is not locked (HTTP, gRPC, or other).
 /// Staging and production implementations must use TLS.
 /// Do not call this from UI.
-abstract interface class ApiClient {}
+final class ApiResponse {
+  const ApiResponse({
+    required this.statusCode,
+    required this.body,
+  });
+
+  final int statusCode;
+  final String body;
+
+  bool get isNoContent => statusCode == 204 || body.trim().isEmpty;
+}
+
+abstract interface class ApiClient {
+  Future<ApiResponse> send({
+    required String method,
+    required Uri uri,
+    Map<String, String>? headers,
+    Object? jsonBody,
+  });
+}

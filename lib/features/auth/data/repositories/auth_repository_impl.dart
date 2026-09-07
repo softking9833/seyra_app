@@ -99,6 +99,8 @@ final class AuthRepositoryImpl implements AuthRepository {
       AuthRemoteErrorCode.sessionExpired => const SessionExpiredFailure(),
       AuthRemoteErrorCode.unauthorized => const UnauthorizedFailure(),
       AuthRemoteErrorCode.network => const NetworkFailure(),
+      AuthRemoteErrorCode.invalidInput =>
+        const ValidationFailure('Invalid username or password'),
     };
   }
 }

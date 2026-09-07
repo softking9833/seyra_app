@@ -2,13 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:seyra/core/config/app_config.dart';
 
 void main() {
-  test('accepts the default development HTTPS URL', () {
+  test('accepts development HTTP for the local Go server', () {
     const config = AppConfig(
       environment: AppEnvironment.development,
       apiBaseUrl: AppConfig.defaultDevelopmentBaseUrl,
     );
 
     expect(config.validate, returnsNormally);
+    expect(config.apiBaseUrl.startsWith('http://'), isTrue);
   });
 
   test('rejects non-TLS URLs in staging', () {
