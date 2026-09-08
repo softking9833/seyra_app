@@ -6,4 +6,5 @@ abstract final class AuthApiEndpoints {
   static const session = '/v1/auth/session';
   static const refresh = '/v1/auth/refresh';
   static const deleteAccount = '/v1/auth/account/delete';
+  static const currentUser = '/v1/users/me';
 }

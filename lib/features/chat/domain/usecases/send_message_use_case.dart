@@ -12,15 +12,17 @@ final class SendMessageUseCase {
     required String conversationId,
     required String body,
     String? replyToId,
+    String? attachmentId,
   }) async {
     final text = body.trim();
-    if (text.isEmpty) {
+    if (text.isEmpty && (attachmentId == null || attachmentId.isEmpty)) {
       return const FailureResult(ValidationFailure('Message is empty'));
     }
     return _repository.sendMessage(
       conversationId: conversationId,
       body: text,
       replyToId: replyToId,
+      attachmentId: attachmentId,
     );
   }
 }

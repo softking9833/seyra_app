@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:seyra/core/errors/result.dart';
 import 'package:seyra/features/auth/domain/entities/auth_session.dart';
 import 'package:seyra/features/auth/domain/usecases/login_use_case.dart';
+import 'package:seyra/features/auth/presentation/widgets/auth_pill_button.dart';
 import 'package:seyra/features/auth/presentation/widgets/auth_screen_scaffold.dart';
 import 'package:seyra/features/auth/presentation/widgets/auth_text_field.dart';
 import 'package:seyra/features/auth/presentation/widgets/seyra_auth_header.dart';
@@ -76,10 +77,8 @@ class _LoginPageState extends State<LoginPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SeyraAuthHeader(
-              subtitle: 'Your privacy matters. Sign in to continue.',
-            ),
-            const SizedBox(height: 32),
+            const SeyraAuthHeader(),
+            const SizedBox(height: 36),
             AuthTextField(
               key: const Key('login_username_field'),
               controller: _usernameController,
@@ -122,44 +121,20 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
             ],
-            const SizedBox(height: 24),
-            FilledButton(
+            const Spacer(),
+            const SizedBox(height: 28),
+            AuthGradientButton(
               key: const Key('login_submit_button'),
+              label: 'Sign in',
+              icon: Icons.person_outline,
+              busy: _submitting,
               onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: theme.colorScheme.onPrimary,
-                      ),
-                    )
-                  : const Text('Sign In'),
             ),
-            TextButton(
-              onPressed: _submitting
-                  ? null
-                  : () {
-                      // Visual placeholder. Recovery is not implemented yet.
-                    },
-              child: const Text('Forgot password?'),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Expanded(child: Divider()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('or', style: theme.textTheme.bodyMedium),
-                ),
-                const Expanded(child: Divider()),
-              ],
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
+            const SizedBox(height: 12),
+            AuthOutlinedPillButton(
               onPressed: _submitting ? null : widget.onCreateAccount,
-              child: const Text('Create an account'),
+              icon: Icons.add,
+              label: 'Create an account',
             ),
           ],
         ),

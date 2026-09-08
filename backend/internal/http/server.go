@@ -1,22 +1,30 @@
 package httpapi
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"seyra/backend/internal/auth"
+	"seyra/backend/internal/chat"
+	"seyra/backend/internal/media"
+	"seyra/backend/internal/notify"
 )
 
 type Server struct {
-	auth *auth.Service
+	auth   *auth.Service
+	chat   *chat.Service
+	hub    *chat.Hub
+	alerts *notify.Service
 }
 
-func NewServer(authService *auth.Service) http.Handler {
-	s := &Server{auth: authService}
+func NewServer(authService *auth.Service, chatService *chat.Service, hub *chat.Hub, alerts *notify.Service) http.Handler {
+	s := &Server{auth: authService, chat: chatService, hub: hub, alerts: alerts}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("POST /v1/auth/register", s.register)
@@ -24,6 +32,72 @@ func NewServer(authService *auth.Service) http.Handler {
 	mux.HandleFunc("GET /v1/auth/session", s.session)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("POST /v1/auth/refresh", s.refresh)
+	mux.HandleFunc("POST /v1/auth/account/delete", s.deleteAccount)
+	mux.HandleFunc("GET /v1/auth/sessions", s.listAuthSessions)
+	mux.HandleFunc("DELETE /v1/auth/sessions/{session_id}", s.revokeAuthSession)
+	mux.HandleFunc("GET /v1/users/me", s.me)
+	mux.HandleFunc("GET /v1/users/search", s.searchUsers)
+	mux.HandleFunc("POST /v1/chats", s.createChat)
+	mux.HandleFunc("POST /v1/chats/groups", s.createGroup)
+	mux.HandleFunc("POST /v1/chats/channels", s.createChannel)
+	mux.HandleFunc("GET /v1/chats", s.listChats)
+	mux.HandleFunc("GET /v1/chats/{chat_id}/messages", s.listMessages)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/messages", s.sendMessage)
+	mux.HandleFunc("DELETE /v1/chats/{chat_id}/messages/{message_id}", s.deleteMessage)
+	mux.HandleFunc("GET /v1/chats/{chat_id}/members", s.listMembers)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/members", s.addMembers)
+	mux.HandleFunc("DELETE /v1/chats/{chat_id}/members/{user_id}", s.removeMember)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/members/{user_id}/role", s.setMemberRole)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/leave", s.leaveChat)
+	mux.HandleFunc("PATCH /v1/chats/{chat_id}", s.patchRoom)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/transfer", s.transferOwnership)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/members/{user_id}/restrict", s.restrictMember)
+	mux.HandleFunc("PUT /v1/chats/{chat_id}/mute", s.putMute)
+	mux.HandleFunc("PUT /v1/chats/{chat_id}/archive", s.putArchive)
+	mux.HandleFunc("GET /v1/chats/{chat_id}/draft", s.getDraft)
+	mux.HandleFunc("PUT /v1/chats/{chat_id}/draft", s.putDraft)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/invites", s.createInvite)
+	mux.HandleFunc("POST /v1/invites/join", s.joinInvite)
+	mux.HandleFunc("GET /v1/chats/{chat_id}/pins", s.listPins)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/messages/{message_id}/pin", s.pinMessage)
+	mux.HandleFunc("DELETE /v1/chats/{chat_id}/messages/{message_id}/pin", s.unpinMessage)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/messages/{message_id}/forward", s.forwardMessage)
+	mux.HandleFunc("PATCH /v1/chats/{chat_id}/messages/{message_id}", s.editMessage)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/join", s.joinChannel)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/attachments", s.uploadAttachment)
+	mux.HandleFunc("GET /v1/chats/{chat_id}/attachments", s.listAttachments)
+	mux.HandleFunc("GET /v1/attachments/{attachment_id}", s.downloadAttachment)
+	mux.HandleFunc("DELETE /v1/attachments/{attachment_id}", s.deleteAttachment)
+	mux.HandleFunc("GET /v1/stickers", s.listStickers)
+	mux.HandleFunc("GET /v1/users/{user_id}/last-seen", s.peerLastSeen)
+	mux.HandleFunc("GET /v1/chats/{chat_id}/receipts", s.chatReceipts)
+	mux.HandleFunc("PUT /v1/chats/{chat_id}/messages/{message_id}/reactions", s.reactToMessage)
+	mux.HandleFunc("GET /v1/search", s.search)
+	mux.HandleFunc("GET /v1/channels/discover", s.discoverChannels)
+	mux.HandleFunc("GET /v1/privacy", s.getPrivacy)
+	mux.HandleFunc("PUT /v1/privacy", s.putPrivacy)
+	mux.HandleFunc("GET /v1/blocks", s.listBlocked)
+	mux.HandleFunc("POST /v1/blocks", s.blockUser)
+	mux.HandleFunc("DELETE /v1/blocks/{user_id}", s.unblockUser)
+	mux.HandleFunc("POST /v1/reports", s.reportUser)
+	mux.HandleFunc("POST /v1/e2e/keys", s.publishKeys)
+	mux.HandleFunc("GET /v1/e2e/devices", s.listE2EDevices)
+	mux.HandleFunc("DELETE /v1/e2e/devices/{device_id}", s.revokeE2EDevice)
+	mux.HandleFunc("GET /v1/e2e/bundle/{user_id}", s.fetchBundle)
+	mux.HandleFunc("GET /v1/calls/ice", s.iceConfig)
+	mux.HandleFunc("POST /v1/calls", s.startCallHTTP)
+	mux.HandleFunc("POST /v1/calls/{call_id}/signal", s.signalCallHTTP)
+	mux.HandleFunc("GET /v1/calls", s.listCalls)
+	mux.HandleFunc("POST /v1/bots", s.createBot)
+	mux.HandleFunc("GET /v1/bots", s.listBots)
+	mux.HandleFunc("DELETE /v1/bots/{bot_id}", s.deleteBot)
+	mux.HandleFunc("POST /v1/bots/{bot_id}/grants", s.grantBot)
+	mux.HandleFunc("POST /v1/bots/dev/echo", s.seedDevBot)
+	mux.HandleFunc("POST /v1/notifications/devices", s.registerDevice)
+	mux.HandleFunc("DELETE /v1/notifications/devices/{device_id}", s.unregisterDevice)
+	mux.HandleFunc("GET /v1/notifications/preferences", s.getNotificationPreferences)
+	mux.HandleFunc("PUT /v1/notifications/preferences", s.putNotificationPreferences)
+	mux.HandleFunc("GET /v1/realtime", s.realtime)
 	return withLogging(withMaxBody(mux))
 }
 
@@ -38,6 +112,10 @@ type passwordRequest struct {
 
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+type deleteAccountRequest struct {
+	Password string `json:"password"`
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
@@ -107,6 +185,91 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sessionPayload(issued))
 }
 
+func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	token := bearerToken(r)
+	user, _, err := s.auth.CurrentSession(r.Context(), token)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, publicProfile(user))
+}
+
+func (s *Server) searchUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := s.auth.SearchUsers(r.Context(), bearerToken(r), r.URL.Query().Get("q"))
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	actorID := ""
+	if user, _, err := s.auth.CurrentSession(r.Context(), bearerToken(r)); err == nil {
+		actorID = user.ID
+	}
+	out := make([]map[string]string, 0, len(users))
+	for _, user := range users {
+		if !s.profileSearchable(r, actorID, user.ID) {
+			continue
+		}
+		out = append(out, map[string]string{
+			"id":       user.ID,
+			"username": user.Username,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"users": out})
+}
+
+func (s *Server) profileSearchable(r *http.Request, actorID, userID string) bool {
+	if userID == actorID {
+		return true
+	}
+	priv, err := s.chat.GetPrivacy(r.Context(), userID)
+	if err != nil {
+		return true
+	}
+	return priv.ProfileVisible
+}
+
+func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
+	var req deleteAccountRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	user, _, err := s.auth.CurrentSession(r.Context(), bearerToken(r))
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		writeAuthError(w, auth.ErrInvalidCredentials)
+		return
+	}
+	ok, err := auth.ComparePassword(user.PasswordHash, req.Password)
+	if err != nil || !ok {
+		writeAuthError(w, auth.ErrInvalidCredentials)
+		return
+	}
+	bots, err := s.chat.ListBots(r.Context(), user.ID)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	for _, bot := range bots {
+		if _, err := s.chat.DeleteBot(r.Context(), user.ID, bot.ID); err != nil {
+			writeAuthError(w, err)
+			return
+		}
+		if err := s.auth.DeleteUserRecord(r.Context(), bot.UserID); err != nil {
+			writeAuthError(w, err)
+			return
+		}
+	}
+	if err := s.auth.DeleteAccount(r.Context(), bearerToken(r), req.Password); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func decodePassword(w http.ResponseWriter, r *http.Request) (passwordRequest, bool) {
 	var req passwordRequest
 	if !decodeJSON(w, r, &req) {
@@ -144,6 +307,14 @@ func sessionPayload(issued auth.IssuedSession) map[string]any {
 	}
 }
 
+func publicProfile(user auth.User) map[string]string {
+	return map[string]string{
+		"id":         user.ID,
+		"username":   user.Username,
+		"created_at": user.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
 func bearerToken(r *http.Request) string {
 	header := r.Header.Get("Authorization")
 	if header == "" {
@@ -159,17 +330,37 @@ func bearerToken(r *http.Request) string {
 func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, auth.ErrInvalidInput):
-		writeError(w, http.StatusBadRequest, "invalid_input", err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_input", "Invalid request")
 	case errors.Is(err, auth.ErrUsernameTaken):
 		writeError(w, http.StatusConflict, "username_taken", "Username is already taken")
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid username or password")
 	case errors.Is(err, auth.ErrSessionExpired):
 		writeError(w, http.StatusUnauthorized, "session_expired", "Session expired")
+	case errors.Is(err, auth.ErrRateLimited):
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many attempts")
 	case errors.Is(err, auth.ErrUnauthorized), errors.Is(err, auth.ErrNotFound):
 		writeError(w, http.StatusUnauthorized, "unauthorized", "Not authorized")
+	case errors.Is(err, chat.ErrInvalidInput):
+		writeError(w, http.StatusBadRequest, "invalid_input", "Invalid request")
+	case errors.Is(err, chat.ErrCannotMessageSelf):
+		writeError(w, http.StatusBadRequest, "cannot_message_self", "Cannot start a conversation with yourself")
+	case errors.Is(err, chat.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "Not found")
+	case errors.Is(err, chat.ErrForbidden):
+		writeError(w, http.StatusForbidden, "forbidden", "Not allowed")
+	case errors.Is(err, chat.ErrAlreadyMember):
+		writeError(w, http.StatusConflict, "already_member", "User is already a member")
+	case errors.Is(err, chat.ErrOwnerProtected):
+		writeError(w, http.StatusForbidden, "owner_protected", "The owner cannot be removed or demoted")
+	case errors.Is(err, media.ErrInvalidType):
+		writeError(w, http.StatusBadRequest, "invalid_type", "File type is not allowed")
+	case errors.Is(err, media.ErrTooLarge):
+		writeError(w, http.StatusBadRequest, "too_large", "File is too large")
+	case errors.Is(err, media.ErrInvalidKey), errors.Is(err, media.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "Not found")
 	default:
-		log.Printf("auth error: %v", err)
+		log.Printf("internal auth error")
 		writeError(w, http.StatusInternalServerError, "unexpected", "Unexpected error")
 	}
 }
@@ -192,6 +383,9 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 func withMaxBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/attachments") {
+			r.Body = http.MaxBytesReader(w, r.Body, 26<<20)
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -213,4 +407,12 @@ type statusWriter struct {
 func (w *statusWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("hijack not supported")
+	}
+	return hijacker.Hijack()
 }

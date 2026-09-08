@@ -1,0 +1,26 @@
+abstract final class ChatApiEndpoints {
+  static const chats = '/v1/chats';
+  static const realtime = '/v1/realtime';
+  static const userSearch = '/v1/users/search';
+
+  static const groups = '/v1/chats/groups';
+  static const channels = '/v1/chats/channels';
+
+  static String messages(String chatId) => '/v1/chats/$chatId/messages';
+
+  static String message(String chatId, String messageId) =>
+      '/v1/chats/$chatId/messages/$messageId';
+
+  static String members(String chatId) => '/v1/chats/$chatId/members';
+
+  static String member(String chatId, String userId) =>
+      '/v1/chats/$chatId/members/$userId';
+
+  static String memberRole(String chatId, String userId) =>
+      '/v1/chats/$chatId/members/$userId/role';
+
+  static String leave(String chatId) => '/v1/chats/$chatId/leave';
+
+  static String reactions(String chatId, String messageId) =>
+      '/v1/chats/$chatId/messages/$messageId/reactions';
+}

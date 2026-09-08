@@ -1,4 +1,5 @@
 import 'package:seyra/features/auth/data/models/auth_session_model.dart';
+import 'package:seyra/features/auth/data/models/current_account_model.dart';
 
 abstract interface class AuthRemoteDataSource {
   Future<AuthSessionModel> login({
@@ -18,4 +19,6 @@ abstract interface class AuthRemoteDataSource {
   Future<AuthSessionModel> refreshSession();
 
   Future<void> deleteAccount({required String password});
+
+  Future<CurrentAccountModel> getCurrentAccount();
 }

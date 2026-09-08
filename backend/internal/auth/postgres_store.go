@@ -42,6 +42,33 @@ func (s *PostgresStore) GetUserByUsername(ctx context.Context, username string) 
 	return scanUser(row)
 }
 
+func (s *PostgresStore) SearchUsers(ctx context.Context, query, excludeUserID string, limit int) ([]User, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, username, created_at
+		FROM users
+		WHERE LOWER(username) LIKE LOWER($1) || '%'
+		  AND id <> $2
+		ORDER BY LOWER(username)
+		LIMIT $3
+	`, query, excludeUserID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search users: %w", err)
+	}
+	defer rows.Close()
+	var out []User
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.Username, &user.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan search user: %w", err)
+		}
+		out = append(out, user)
+	}
+	return out, rows.Err()
+}
+
 func (s *PostgresStore) GetUserByID(ctx context.Context, id string) (User, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT id, username, password_hash, created_at
@@ -116,6 +143,31 @@ func (s *PostgresStore) RevokeSession(ctx context.Context, sessionID string, at 
 	return nil
 }
 
+func (s *PostgresStore) DeleteUserAndSessions(ctx context.Context, userID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete user: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete sessions: %w", err)
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete user: %w", err)
+	}
+	return nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -151,6 +203,27 @@ func scanSession(row rowScanner) (Session, error) {
 		return Session{}, fmt.Errorf("scan session: %w", err)
 	}
 	return session, nil
+}
+
+func (s *PostgresStore) ListSessions(ctx context.Context, userID string) ([]Session, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, user_id, access_token_hash, refresh_token_hash,
+		       expires_at, refresh_expires_at, revoked_at, created_at
+		FROM sessions WHERE user_id = $1 ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		sess, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sess)
+	}
+	return out, rows.Err()
 }
 
 func isUniqueViolation(err error) bool {

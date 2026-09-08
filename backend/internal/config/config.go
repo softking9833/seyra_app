@@ -8,9 +8,12 @@ import (
 )
 
 type Config struct {
-	HTTPAddr      string
-	DatabaseURL   string
-	SessionPepper string
+	HTTPAddr       string
+	DatabaseURL    string
+	SessionPepper  string
+	PushWebhookURL  string
+	PushWebhookAuth string
+	MediaDir        string
 }
 
 func LoadDotEnv(path string) error {
@@ -44,9 +47,12 @@ func LoadDotEnv(path string) error {
 
 func FromEnv() (Config, error) {
 	cfg := Config{
-		HTTPAddr:      getenv("SEYRA_HTTP_ADDR", ":8080"),
-		DatabaseURL:   os.Getenv("SEYRA_DATABASE_URL"),
-		SessionPepper: os.Getenv("SEYRA_SESSION_PEPPER"),
+		HTTPAddr:        getenv("SEYRA_HTTP_ADDR", ":8080"),
+		DatabaseURL:     os.Getenv("SEYRA_DATABASE_URL"),
+		SessionPepper:   os.Getenv("SEYRA_SESSION_PEPPER"),
+		PushWebhookURL:  strings.TrimSpace(os.Getenv("SEYRA_PUSH_WEBHOOK_URL")),
+		PushWebhookAuth: strings.TrimSpace(os.Getenv("SEYRA_PUSH_WEBHOOK_TOKEN")),
+		MediaDir:        getenv("SEYRA_MEDIA_DIR", ".media"),
 	}
 	if strings.TrimSpace(cfg.DatabaseURL) == "" {
 		return Config{}, fmt.Errorf("SEYRA_DATABASE_URL is required")

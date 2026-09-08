@@ -1,6 +1,7 @@
 import 'package:seyra/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:seyra/features/auth/data/exceptions/auth_remote_exceptions.dart';
 import 'package:seyra/features/auth/data/models/auth_session_model.dart';
+import 'package:seyra/features/auth/data/models/current_account_model.dart';
 
 /// Placeholder remote auth adapter. It does not call a backend or persist data.
 final class DeferredAuthRemoteDataSource implements AuthRemoteDataSource {
@@ -35,6 +36,11 @@ final class DeferredAuthRemoteDataSource implements AuthRemoteDataSource {
 
   @override
   Future<void> deleteAccount({required String password}) async {
+    throw const AuthRemoteUnavailableException();
+  }
+
+  @override
+  Future<CurrentAccountModel> getCurrentAccount() async {
     throw const AuthRemoteUnavailableException();
   }
 }

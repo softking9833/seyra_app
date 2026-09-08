@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:seyra/core/errors/result.dart';
 import 'package:seyra/features/auth/domain/entities/auth_session.dart';
 import 'package:seyra/features/auth/domain/usecases/register_use_case.dart';
+import 'package:seyra/features/auth/presentation/widgets/auth_pill_button.dart';
 import 'package:seyra/features/auth/presentation/widgets/auth_screen_scaffold.dart';
 import 'package:seyra/features/auth/presentation/widgets/auth_text_field.dart';
 import 'package:seyra/features/auth/presentation/widgets/seyra_auth_header.dart';
@@ -78,6 +79,7 @@ class _RegisterPageState extends State<RegisterPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SeyraAuthHeader(
+              compact: true,
               subtitle:
                   'Create your account. Join Seyra and start your secure messaging journey.',
             ),
@@ -145,19 +147,12 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
             ],
             const SizedBox(height: 24),
-            FilledButton(
+            AuthGradientButton(
               key: const Key('register_submit_button'),
+              label: 'Create Account',
+              icon: Icons.add,
+              busy: _submitting,
               onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: theme.colorScheme.onPrimary,
-                      ),
-                    )
-                  : const Text('Create Account'),
             ),
             const SizedBox(height: 16),
             Text.rich(

@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:seyra/features/chat/data/datasources/chat_data_source.dart';
 import 'package:seyra/features/chat/domain/entities/chat_message.dart';
 import 'package:seyra/features/chat/domain/entities/conversation.dart';
+import 'package:seyra/features/chat/domain/entities/user_preview.dart';
+import 'package:seyra/features/chat/domain/entities/room_member.dart';
+import 'package:seyra/features/notifications/domain/entities/notification_models.dart';
 
 final class MockChatDataSource implements ChatDataSource {
   MockChatDataSource({
@@ -19,6 +22,7 @@ final class MockChatDataSource implements ChatDataSource {
 
   late List<Conversation> _conversations;
   late Map<String, List<ChatMessage>> _messages;
+  final Map<String, List<RoomMember>> _members = {};
   final Map<String, bool> _typing = {};
   int _seq = 0;
 
@@ -27,6 +31,8 @@ final class MockChatDataSource implements ChatDataSource {
   final Map<String, StreamController<List<ChatMessage>>> _messageControllers =
       {};
   final Map<String, StreamController<bool>> _typingControllers = {};
+  String? _activeConversationId;
+  final _alertsController = StreamController<IncomingAlert>.broadcast();
 
   static const _me = ChatMessage.localUserId;
 
@@ -49,6 +55,9 @@ final class MockChatDataSource implements ChatDataSource {
   }
 
   @override
+  Stream<IncomingAlert> watchIncomingAlerts() => _alertsController.stream;
+
+  @override
   Conversation? getConversation(String id) {
     for (final item in _conversations) {
       if (item.id == id) {
@@ -59,11 +68,220 @@ final class MockChatDataSource implements ChatDataSource {
   }
 
   @override
-  ChatMessage sendMessage({
+  String get currentUserId => _me;
+
+  @override
+  Future<Conversation> startDirectChat(String username) async {
+    final key = username.trim();
+    if (key.isEmpty) {
+      throw const ChatNotFoundException('Username is required');
+    }
+    for (final item in _conversations) {
+      if (item.kind == ConversationKind.direct &&
+          item.title.toLowerCase() == key.toLowerCase()) {
+        return item;
+      }
+    }
+    final conversation = Conversation(
+      id: 'local-${++_seq}',
+      title: key,
+      initials: _initials(key),
+      kind: ConversationKind.direct,
+      lastMessagePreview: 'No messages yet',
+      lastMessageAt: DateTime.now(),
+      statusText: '@$key',
+    );
+    _conversations = [..._conversations, conversation];
+    _messages[conversation.id] = [];
+    _conversationsController.add(_sortedConversations());
+    return conversation;
+  }
+
+  @override
+  Future<Conversation> startGroup({
+    required String title,
+    required List<String> usernames,
+  }) {
+    return _startRoom(title: title, usernames: usernames, kind: ConversationKind.group);
+  }
+
+  @override
+  Future<Conversation> startChannel({
+    required String title,
+    required List<String> usernames,
+    String visibility = 'private',
+  }) {
+    return _startRoom(
+      title: title,
+      usernames: usernames,
+      kind: ConversationKind.channel,
+      visibility: visibility,
+    );
+  }
+
+  Future<Conversation> _startRoom({
+    required String title,
+    required List<String> usernames,
+    required ConversationKind kind,
+    String visibility = 'private',
+  }) async {
+    final name = title.trim();
+    if (name.isEmpty || (kind == ConversationKind.group && usernames.isEmpty)) {
+      throw const ChatNotFoundException('A title and members are required');
+    }
+    final conversation = Conversation(
+      id: 'local-${++_seq}',
+      title: name,
+      initials: _initials(name),
+      kind: kind,
+      lastMessagePreview: 'No messages yet',
+      lastMessageAt: DateTime.now(),
+      visibility: visibility,
+      statusText: kind == ConversationKind.group
+          ? '${usernames.length + 1} members'
+          : 'Channel',
+    );
+    _conversations = [..._conversations, conversation];
+    _messages[conversation.id] = [];
+    _members[conversation.id] = [
+      RoomMember(id: _me, username: 'you', role: MemberRole.owner),
+      ...usernames.map(
+        (name) => RoomMember(
+          id: 'peer-$name',
+          username: name,
+          role: MemberRole.member,
+        ),
+      ),
+    ];
+    _conversationsController.add(_sortedConversations());
+    return conversation;
+  }
+
+  @override
+  Future<List<RoomMember>> listMembers(String conversationId) async {
+    return List<RoomMember>.from(_members[conversationId] ?? const []);
+  }
+
+  @override
+  Future<List<RoomMember>> addMembers({
+    required String conversationId,
+    required List<String> usernames,
+  }) async {
+    final current = [...(_members[conversationId] ?? const <RoomMember>[])];
+    for (final name in usernames) {
+      if (current.any((m) => m.username.toLowerCase() == name.toLowerCase())) {
+        continue;
+      }
+      current.add(
+        RoomMember(id: 'peer-$name', username: name, role: MemberRole.member),
+      );
+    }
+    _members[conversationId] = current;
+    return current;
+  }
+
+  @override
+  Future<void> removeMember({
+    required String conversationId,
+    required String userId,
+  }) async {
+    final current = [...(_members[conversationId] ?? const <RoomMember>[])];
+    current.removeWhere((m) => m.id == userId && m.role != MemberRole.owner);
+    _members[conversationId] = current;
+  }
+
+  @override
+  Future<void> setMemberRole({
+    required String conversationId,
+    required String userId,
+    required MemberRole role,
+  }) async {
+    final current = [...(_members[conversationId] ?? const <RoomMember>[])];
+    _members[conversationId] = [
+      for (final m in current)
+        if (m.id == userId && m.role != MemberRole.owner)
+          RoomMember(id: m.id, username: m.username, role: role)
+        else
+          m,
+    ];
+  }
+
+  @override
+  Future<void> leaveConversation(String conversationId) async {
+    _conversations = _conversations.where((item) => item.id != conversationId).toList();
+    _members.remove(conversationId);
+    _conversationsController.add(_sortedConversations());
+  }
+
+  @override
+  Future<List<UserPreview>> searchUsers(String query) async {
+    final needle = query.trim().toLowerCase();
+    if (needle.isEmpty) {
+      return const [];
+    }
+    final seen = <String>{};
+    final out = <UserPreview>[];
+    for (final item in _conversations) {
+      if (item.kind != ConversationKind.direct) {
+        continue;
+      }
+      if (!item.title.toLowerCase().contains(needle) &&
+          !item.statusText.toLowerCase().contains(needle)) {
+        continue;
+      }
+      final username = item.statusText.startsWith('@')
+          ? item.statusText.substring(1)
+          : item.title;
+      final key = username.toLowerCase();
+      if (!seen.add(key)) {
+        continue;
+      }
+      out.add(UserPreview(id: item.id, username: username));
+    }
+    return out;
+  }
+
+  @override
+  Future<void> refreshConversations() async {
+    _conversationsController.add(_sortedConversations());
+  }
+
+  @override
+  void setActiveConversation(String? conversationId) {
+    _activeConversationId = conversationId;
+  }
+
+  @override
+  Future<ChatMessage> retryMessage({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final items = _messages[conversationId];
+    if (items == null) {
+      throw const ChatNotFoundException('Conversation not found');
+    }
+    ChatMessage? failed;
+    for (final item in items) {
+      if (item.id == messageId) {
+        failed = item;
+        break;
+      }
+    }
+    if (failed == null) {
+      throw const ChatNotFoundException('Message not found');
+    }
+    items.removeWhere((item) => item.id == messageId);
+    _emitMessages(conversationId);
+    return sendMessage(conversationId: conversationId, body: failed.body);
+  }
+
+  @override
+  Future<ChatMessage> sendMessage({
     required String conversationId,
     required String body,
     String? replyToId,
-  }) {
+    String? attachmentId,
+  }) async {
     final conversation = getConversation(conversationId);
     if (conversation == null) {
       throw const ChatNotFoundException('Conversation not found');
@@ -90,6 +308,7 @@ final class MockChatDataSource implements ChatDataSource {
           : MessageDelivery.sent,
       replyToId: replyToId,
       replyPreview: replyPreview,
+      attachmentId: attachmentId,
     );
 
     _append(conversationId, message);
@@ -106,10 +325,10 @@ final class MockChatDataSource implements ChatDataSource {
   }
 
   @override
-  void deleteMessage({
+  Future<void> deleteMessage({
     required String conversationId,
     required String messageId,
-  }) {
+  }) async {
     final items = _messages[conversationId];
     if (items == null) {
       throw const ChatNotFoundException('Conversation not found');
@@ -125,11 +344,11 @@ final class MockChatDataSource implements ChatDataSource {
   }
 
   @override
-  void reactToMessage({
+  Future<void> reactToMessage({
     required String conversationId,
     required String messageId,
     required String emoji,
-  }) {
+  }) async {
     final items = _messages[conversationId];
     if (items == null) {
       throw const ChatNotFoundException('Conversation not found');
@@ -170,7 +389,7 @@ final class MockChatDataSource implements ChatDataSource {
   }
 
   @override
-  void markConversationRead(String conversationId) {
+  Future<void> markConversationRead(String conversationId) async {
     final conversation = getConversation(conversationId);
     if (conversation == null) {
       throw const ChatNotFoundException('Conversation not found');
@@ -179,7 +398,7 @@ final class MockChatDataSource implements ChatDataSource {
   }
 
   @override
-  void clearConversation(String conversationId) {
+  Future<void> clearConversation(String conversationId) async {
     if (getConversation(conversationId) == null) {
       throw const ChatNotFoundException('Conversation not found');
     }
@@ -193,7 +412,7 @@ final class MockChatDataSource implements ChatDataSource {
   }
 
   @override
-  void setMuted({required String conversationId, required bool muted}) {
+  Future<void> setMuted({required String conversationId, required bool muted}) async {
     final conversation = getConversation(conversationId);
     if (conversation == null) {
       throw const ChatNotFoundException('Conversation not found');
@@ -256,17 +475,23 @@ final class MockChatDataSource implements ChatDataSource {
   void _updateConversationPreview(
     String conversationId,
     String preview,
-    DateTime at,
-  ) {
+    DateTime at, {
+    bool fromPeer = false,
+  }) {
     final conversation = getConversation(conversationId);
     if (conversation == null) {
       return;
     }
+    final unread = conversationId == _activeConversationId
+        ? 0
+        : fromPeer
+        ? conversation.unreadCount + 1
+        : conversation.unreadCount;
     _replaceConversation(
       conversation.copyWith(
         lastMessagePreview: preview,
         lastMessageAt: at,
-        unreadCount: 0,
+        unreadCount: unread,
       ),
     );
   }
@@ -332,7 +557,12 @@ final class MockChatDataSource implements ChatDataSource {
       delivery: MessageDelivery.read,
     );
     _append(conversationId, reply);
-    _updateConversationPreview(conversationId, reply.body, reply.sentAt);
+    _updateConversationPreview(
+      conversationId,
+      reply.body,
+      reply.sentAt,
+      fromPeer: true,
+    );
   }
 
   static List<Conversation> _seedConversations(DateTime now) {
@@ -554,5 +784,16 @@ final class MockChatDataSource implements ChatDataSource {
         ),
       ],
     };
+  }
+
+  static String _initials(String username) {
+    final value = username.trim();
+    if (value.isEmpty) {
+      return '?';
+    }
+    if (value.length == 1) {
+      return value.toUpperCase();
+    }
+    return value.substring(0, 2).toUpperCase();
   }
 }

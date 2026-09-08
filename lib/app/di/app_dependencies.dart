@@ -1,6 +1,16 @@
 import 'package:seyra/core/config/app_config.dart';
 import 'package:seyra/core/network/http_api_client.dart';
 import 'package:seyra/core/storage/flutter_secure_storage_adapter.dart';
+import 'package:seyra/core/storage/memory_secure_storage.dart';
+import 'package:seyra/features/chat/domain/usecases/watch_incoming_alerts_use_case.dart';
+import 'package:seyra/features/notifications/data/http_notification_repository.dart';
+import 'package:seyra/features/notifications/data/local_notification_display.dart';
+import 'package:seyra/features/notifications/data/notification_display.dart';
+import 'package:seyra/features/notifications/data/push_coordinator.dart';
+import 'package:seyra/features/notifications/domain/repositories/notification_repository.dart';
+import 'package:seyra/features/notifications/domain/usecases/notification_use_cases.dart';
+import 'package:seyra/app/router/app_navigator.dart';
+import 'package:seyra/app/router/app_routes.dart';
 import 'package:seyra/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:seyra/features/auth/data/datasources/http_auth_remote_data_source.dart';
 import 'package:seyra/features/auth/data/datasources/mock_auth_remote_data_source.dart';
@@ -13,23 +23,39 @@ import 'package:seyra/features/auth/domain/usecases/refresh_session_use_case.dar
 import 'package:seyra/features/auth/domain/usecases/register_use_case.dart';
 import 'package:seyra/features/auth/domain/usecases/restore_session_use_case.dart';
 import 'package:seyra/features/chat/data/datasources/chat_data_source.dart';
+import 'package:seyra/features/chat/data/datasources/http_chat_data_source.dart';
 import 'package:seyra/features/chat/data/datasources/mock_chat_data_source.dart';
+import 'package:seyra/features/chat/data/realtime/io_chat_realtime.dart';
 import 'package:seyra/features/chat/data/repositories/chat_repository_impl.dart';
+import 'package:seyra/features/chat/data/repositories/http_chat_social_repository.dart';
+import 'package:seyra/features/chat/data/repositories/mock_chat_social_repository.dart';
 import 'package:seyra/features/chat/domain/repositories/chat_repository.dart';
+import 'package:seyra/features/chat/domain/repositories/chat_social_repository.dart';
 import 'package:seyra/features/chat/domain/usecases/clear_conversation_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/delete_message_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/get_conversation_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/mark_conversation_read_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/react_to_message_use_case.dart';
+import 'package:seyra/features/chat/domain/usecases/refresh_conversations_use_case.dart';
+import 'package:seyra/features/chat/domain/usecases/retry_message_use_case.dart';
+import 'package:seyra/features/chat/domain/usecases/search_users_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/send_message_use_case.dart';
+import 'package:seyra/features/chat/domain/usecases/set_active_conversation_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/set_conversation_muted_use_case.dart';
+import 'package:seyra/features/chat/domain/usecases/start_direct_chat_use_case.dart';
+import 'package:seyra/features/chat/domain/usecases/start_group_use_case.dart';
+import 'package:seyra/features/chat/domain/usecases/start_channel_use_case.dart';
+import 'package:seyra/features/chat/domain/usecases/room_member_use_cases.dart';
 import 'package:seyra/features/chat/domain/usecases/watch_conversations_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/watch_messages_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/watch_peer_typing_use_case.dart';
 import 'package:seyra/features/profile/data/datasources/mock_profile_data_source.dart';
 import 'package:seyra/features/profile/data/datasources/profile_data_source.dart';
+import 'package:seyra/features/profile/data/repositories/account_repository_impl.dart';
 import 'package:seyra/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:seyra/features/profile/domain/repositories/account_repository.dart';
 import 'package:seyra/features/profile/domain/repositories/profile_repository.dart';
+import 'package:seyra/features/profile/domain/usecases/get_account_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/update_preferences_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/update_profile_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/watch_preferences_use_case.dart';
@@ -48,13 +74,28 @@ abstract final class AppDependencies {
   static late RestoreSessionUseCase restoreSessionUseCase;
   static late RefreshSessionUseCase refreshSessionUseCase;
   static late DeleteAccountUseCase deleteAccountUseCase;
+  static late AccountRepository accountRepository;
+  static late GetAccountUseCase getAccountUseCase;
   static late ChatDataSource chatDataSource;
   static late ChatRepository chatRepository;
+  static late ChatSocialRepository chatSocial;
   static late WatchConversationsUseCase watchConversationsUseCase;
   static late WatchMessagesUseCase watchMessagesUseCase;
   static late WatchPeerTypingUseCase watchPeerTypingUseCase;
   static late GetConversationUseCase getConversationUseCase;
   static late SendMessageUseCase sendMessageUseCase;
+  static late StartDirectChatUseCase startDirectChatUseCase;
+  static late StartGroupUseCase startGroupUseCase;
+  static late StartChannelUseCase startChannelUseCase;
+  static late ListMembersUseCase listMembersUseCase;
+  static late AddMembersUseCase addMembersUseCase;
+  static late RemoveMemberUseCase removeMemberUseCase;
+  static late SetMemberRoleUseCase setMemberRoleUseCase;
+  static late LeaveConversationUseCase leaveConversationUseCase;
+  static late SearchUsersUseCase searchUsersUseCase;
+  static late RefreshConversationsUseCase refreshConversationsUseCase;
+  static late RetryMessageUseCase retryMessageUseCase;
+  static late SetActiveConversationUseCase setActiveConversationUseCase;
   static late DeleteMessageUseCase deleteMessageUseCase;
   static late ReactToMessageUseCase reactToMessageUseCase;
   static late MarkConversationReadUseCase markConversationReadUseCase;
@@ -66,6 +107,14 @@ abstract final class AppDependencies {
   static late UpdateProfileUseCase updateProfileUseCase;
   static late WatchPreferencesUseCase watchPreferencesUseCase;
   static late UpdatePreferencesUseCase updatePreferencesUseCase;
+  static late NotificationRepository notificationRepository;
+  static late RegisterDeviceUseCase registerDeviceUseCase;
+  static late UnregisterDeviceUseCase unregisterDeviceUseCase;
+  static late GetNotificationPreferencesUseCase getNotificationPreferencesUseCase;
+  static late UpdateNotificationPreferencesUseCase
+      updateNotificationPreferencesUseCase;
+  static late WatchIncomingAlertsUseCase watchIncomingAlertsUseCase;
+  static late PushCoordinator pushCoordinator;
 
   static Future<void> initialize({
     AppConfig? config,
@@ -88,16 +137,42 @@ abstract final class AppDependencies {
     restoreSessionUseCase = RestoreSessionUseCase(authRepository);
     refreshSessionUseCase = RefreshSessionUseCase(authRepository);
     deleteAccountUseCase = DeleteAccountUseCase(authRepository);
+    accountRepository = AccountRepositoryImpl(
+      remoteDataSource: authRemoteDataSource,
+    );
+    getAccountUseCase = GetAccountUseCase(accountRepository);
 
     chatDataSource =
         chatSource ??
-        MockChatDataSource(deliveryDelay: const Duration(milliseconds: 400));
+        (remoteDataSource != null
+            ? MockChatDataSource(
+                deliveryDelay: const Duration(milliseconds: 400),
+              )
+            : _createChatDataSource());
     chatRepository = ChatRepositoryImpl(dataSource: chatDataSource);
+    final source = chatDataSource;
+    chatSocial = source is HttpChatDataSource
+        ? HttpChatSocialRepository(source)
+        : MockChatSocialRepository();
     watchConversationsUseCase = WatchConversationsUseCase(chatRepository);
     watchMessagesUseCase = WatchMessagesUseCase(chatRepository);
     watchPeerTypingUseCase = WatchPeerTypingUseCase(chatRepository);
     getConversationUseCase = GetConversationUseCase(chatRepository);
     sendMessageUseCase = SendMessageUseCase(chatRepository);
+    startDirectChatUseCase = StartDirectChatUseCase(chatRepository);
+    startGroupUseCase = StartGroupUseCase(chatRepository);
+    startChannelUseCase = StartChannelUseCase(chatRepository);
+    listMembersUseCase = ListMembersUseCase(chatRepository);
+    addMembersUseCase = AddMembersUseCase(chatRepository);
+    removeMemberUseCase = RemoveMemberUseCase(chatRepository);
+    setMemberRoleUseCase = SetMemberRoleUseCase(chatRepository);
+    leaveConversationUseCase = LeaveConversationUseCase(chatRepository);
+    searchUsersUseCase = SearchUsersUseCase(chatRepository);
+    refreshConversationsUseCase = RefreshConversationsUseCase(chatRepository);
+    retryMessageUseCase = RetryMessageUseCase(chatRepository);
+    setActiveConversationUseCase = SetActiveConversationUseCase(
+      chatRepository.setActiveConversation,
+    );
     deleteMessageUseCase = DeleteMessageUseCase(chatRepository);
     reactToMessageUseCase = ReactToMessageUseCase(chatRepository);
     markConversationReadUseCase = MarkConversationReadUseCase(chatRepository);
@@ -110,6 +185,42 @@ abstract final class AppDependencies {
     updateProfileUseCase = UpdateProfileUseCase(profileRepository);
     watchPreferencesUseCase = WatchPreferencesUseCase(profileRepository);
     updatePreferencesUseCase = UpdatePreferencesUseCase(profileRepository);
+
+    final httpMode = appConfig.authBackendMode == AuthBackendMode.http &&
+        remoteDataSource == null;
+    notificationRepository = httpMode
+        ? HttpNotificationRepository(
+            apiClient: HttpApiClient(),
+            secureStorage: FlutterSecureStorageAdapter(),
+            baseUrl: Uri.parse(appConfig.apiBaseUrl),
+          )
+        : MemoryNotificationRepository();
+    registerDeviceUseCase = RegisterDeviceUseCase(notificationRepository);
+    unregisterDeviceUseCase = UnregisterDeviceUseCase(notificationRepository);
+    getNotificationPreferencesUseCase = GetNotificationPreferencesUseCase(
+      notificationRepository,
+    );
+    updateNotificationPreferencesUseCase = UpdateNotificationPreferencesUseCase(
+      notificationRepository,
+    );
+    watchIncomingAlertsUseCase = WatchIncomingAlertsUseCase(chatRepository);
+    pushCoordinator = PushCoordinator(
+      registerDevice: registerDeviceUseCase,
+      unregisterDevice: unregisterDeviceUseCase,
+      watchAlerts: watchIncomingAlertsUseCase,
+      display: httpMode
+          ? LocalNotificationDisplay()
+          : NoopNotificationDisplay(),
+      secureStorage: httpMode
+          ? FlutterSecureStorageAdapter()
+          : MemorySecureStorage(),
+      openConversation: (id) {
+        AppNavigator.key.currentState?.pushNamed(
+          AppRoutes.conversation,
+          arguments: id,
+        );
+      },
+    );
   }
 
   static AuthRemoteDataSource _createAuthRemoteDataSource() {
@@ -122,6 +233,21 @@ abstract final class AppDependencies {
       apiClient: HttpApiClient(),
       secureStorage: FlutterSecureStorageAdapter(),
       baseUrl: Uri.parse(appConfig.apiBaseUrl),
+    );
+  }
+
+  static ChatDataSource _createChatDataSource() {
+    if (appConfig.authBackendMode == AuthBackendMode.mock) {
+      return MockChatDataSource(
+        deliveryDelay: const Duration(milliseconds: 400),
+      );
+    }
+    return HttpChatDataSource(
+      apiClient: HttpApiClient(),
+      secureStorage: FlutterSecureStorageAdapter(),
+      authRemote: authRemoteDataSource,
+      baseUrl: Uri.parse(appConfig.apiBaseUrl),
+      realtime: IoChatRealtime(),
     );
   }
 }

@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:seyra/core/errors/result.dart';
 import 'package:seyra/core/theme/app_colors.dart';
 import 'package:seyra/features/auth/domain/entities/user.dart';
+import 'package:seyra/features/notifications/domain/entities/notification_models.dart';
+import 'package:seyra/features/notifications/domain/usecases/notification_use_cases.dart';
 import 'package:seyra/features/profile/domain/entities/user_profile.dart';
 import 'package:seyra/features/profile/domain/usecases/update_preferences_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/watch_preferences_use_case.dart';
@@ -13,15 +18,29 @@ class SettingsPage extends StatefulWidget {
     required this.user,
     required this.watchPreferences,
     required this.updatePreferences,
+    required this.getNotificationPreferences,
+    required this.updateNotificationPreferences,
     required this.onEditProfile,
     required this.onLogout,
+    required this.onDeleteAccount,
+    this.onPrivacy,
+    this.onSessions,
+    this.onBots,
+    this.onCalls,
   });
 
   final User user;
   final WatchPreferencesUseCase watchPreferences;
   final UpdatePreferencesUseCase updatePreferences;
+  final GetNotificationPreferencesUseCase getNotificationPreferences;
+  final UpdateNotificationPreferencesUseCase updateNotificationPreferences;
   final VoidCallback onEditProfile;
   final Future<void> Function() onLogout;
+  final VoidCallback onDeleteAccount;
+  final VoidCallback? onPrivacy;
+  final VoidCallback? onSessions;
+  final VoidCallback? onBots;
+  final VoidCallback? onCalls;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -29,11 +48,28 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late final Stream<UserPreferences> _preferences;
+  NotificationPreferences _alerts = const NotificationPreferences();
 
   @override
   void initState() {
     super.initState();
     _preferences = widget.watchPreferences();
+    unawaited(_loadAlerts());
+  }
+
+  Future<void> _loadAlerts() async {
+    final result = await widget.getNotificationPreferences();
+    if (!mounted) {
+      return;
+    }
+    if (result is Success<NotificationPreferences>) {
+      setState(() => _alerts = result.value);
+    }
+  }
+
+  Future<void> _saveAlerts(NotificationPreferences next) async {
+    setState(() => _alerts = next);
+    await widget.updateNotificationPreferences(next);
   }
 
   @override
@@ -52,6 +88,7 @@ class _SettingsPageState extends State<SettingsPage> {
           }
 
           return ListView(
+            key: const Key('settings_scroll'),
             padding: const EdgeInsets.only(bottom: 40),
             children: [
               SettingsSection(
@@ -61,7 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     key: const Key('settings_edit_profile_tile'),
                     icon: Icons.person_outline,
                     title: 'Edit profile',
-                    subtitle: 'Name, bio, and photo',
+                    subtitle: 'Local placeholder — not saved to the server',
                     onTap: widget.onEditProfile,
                   ),
                   SettingsTile(
@@ -72,15 +109,30 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   SettingsTile(
                     icon: Icons.manage_accounts_outlined,
-                    title: 'Account management',
-                    subtitle: 'Email, devices, and recovery',
-                    onTap: () => _comingSoon(context, 'Account management'),
+                    title: 'Devices & sessions',
+                    subtitle: 'Revoke signed-in sessions',
+                    onTap: widget.onSessions ?? () => _comingSoon(context, 'Sessions'),
+                  ),
+                  SettingsTile(
+                    key: const Key('settings_delete_account_tile'),
+                    icon: Icons.delete_outline,
+                    iconColor: const Color(0xFFB91C1C),
+                    titleColor: const Color(0xFFB91C1C),
+                    title: 'Delete account',
+                    subtitle: 'Permanently delete your Seyra account',
+                    onTap: widget.onDeleteAccount,
                   ),
                 ],
               ),
               SettingsSection(
-                title: 'Privacy',
+                title: 'Privacy & Security',
                 children: [
+                  SettingsTile(
+                    icon: Icons.lock_outline,
+                    title: 'Privacy controls',
+                    subtitle: 'Presence, receipts, profile, previews',
+                    onTap: widget.onPrivacy ?? () => _comingSoon(context, 'Privacy'),
+                  ),
                   SettingsTile(
                     icon: Icons.schedule,
                     title: 'Last seen',
@@ -114,24 +166,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                   SettingsTile(
-                    icon: Icons.block_outlined,
-                    title: 'Blocked users',
-                    subtitle: 'None',
-                    onTap: () => _info(
-                      context,
-                      title: 'Blocked users',
-                      body: 'You have not blocked anyone yet.',
-                    ),
+                    icon: Icons.smart_toy_outlined,
+                    title: 'Bots',
+                    onTap: widget.onBots ?? () => _comingSoon(context, 'Bots'),
                   ),
-                ],
-              ),
-              SettingsSection(
-                title: 'Security',
-                children: [
+                  SettingsTile(
+                    icon: Icons.call_outlined,
+                    title: 'Call history',
+                    onTap: widget.onCalls ?? () => _comingSoon(context, 'Calls'),
+                  ),
                   SettingsTile(
                     icon: Icons.lock_outline,
                     title: 'Encryption',
-                    subtitle: 'Prepared for future E2E messaging',
+                    subtitle: 'Signal Protocol for new 1:1 messages when keys exist. Older messages stay plaintext.',
                     onTap: () => _info(
                       context,
                       title: 'Encryption',
@@ -142,11 +189,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   SettingsTile(
                     icon: Icons.devices_outlined,
                     title: 'Active sessions',
-                    subtitle: 'This device',
+                    subtitle: 'Placeholder — this device only',
                     onTap: () => _info(
                       context,
                       title: 'Active sessions',
-                      body: 'This device\nSeyra mock session\nSigned in locally',
+                      body: 'Session management for this signed-in device.',
                     ),
                   ),
                   SettingsTile(
@@ -163,10 +210,25 @@ class _SettingsPageState extends State<SettingsPage> {
                   SwitchListTile(
                     secondary: _iconWrap(Icons.notifications_outlined),
                     title: const Text('Message notifications'),
-                    value: preferences.messageNotifications,
+                    subtitle: const Text('Synced to the Seyra server'),
+                    value: _alerts.messagesEnabled,
                     onChanged: (value) {
                       widget.updatePreferences(
                         preferences.copyWith(messageNotifications: value),
+                      );
+                      unawaited(
+                        _saveAlerts(_alerts.copyWith(messagesEnabled: value)),
+                      );
+                    },
+                  ),
+                  SwitchListTile(
+                    secondary: _iconWrap(Icons.visibility_outlined),
+                    title: const Text('Message preview'),
+                    subtitle: const Text('Off = generic “New message” text'),
+                    value: _alerts.showPreview,
+                    onChanged: (value) {
+                      unawaited(
+                        _saveAlerts(_alerts.copyWith(showPreview: value)),
                       );
                     },
                   ),
@@ -183,12 +245,21 @@ class _SettingsPageState extends State<SettingsPage> {
                   SwitchListTile(
                     secondary: _iconWrap(Icons.call_outlined),
                     title: const Text('Call notifications'),
-                    value: preferences.callNotifications,
+                    value: _alerts.callsEnabled,
                     onChanged: (value) {
                       widget.updatePreferences(
                         preferences.copyWith(callNotifications: value),
                       );
+                      unawaited(
+                        _saveAlerts(_alerts.copyWith(callsEnabled: value)),
+                      );
                     },
+                  ),
+                  const SettingsTile(
+                    icon: Icons.smartphone_outlined,
+                    title: 'This device',
+                    subtitle:
+                        'Registered for Seyra alerts after you sign in. Closed-app delivery needs SEYRA_PUSH_WEBHOOK_URL on the server.',
                   ),
                 ],
               ),
@@ -210,8 +281,19 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
               SettingsSection(
-                title: 'Data',
+                title: 'About Seyra',
                 children: [
+                  SettingsTile(
+                    icon: Icons.info_outline,
+                    title: 'Seyra',
+                    subtitle: 'Version 1.0.0',
+                    onTap: () => _info(
+                      context,
+                      title: 'About Seyra',
+                      body:
+                          'Seyra is a private messenger. Encryption, calls, and cloud sync are not enabled in this build.',
+                    ),
+                  ),
                   SettingsTile(
                     icon: Icons.sd_storage_outlined,
                     title: 'Storage usage',
@@ -240,15 +322,6 @@ class _SettingsPageState extends State<SettingsPage> {
               SettingsSection(
                 title: 'Danger zone',
                 children: [
-                  SettingsTile(
-                    key: const Key('settings_delete_account_tile'),
-                    icon: Icons.delete_outline,
-                    iconColor: const Color(0xFFB91C1C),
-                    titleColor: const Color(0xFFB91C1C),
-                    title: 'Delete account',
-                    subtitle: 'Confirmation only — nothing is deleted',
-                    onTap: () => _confirmDelete(context),
-                  ),
                   SettingsTile(
                     key: const Key('settings_logout_tile'),
                     icon: Icons.logout,
@@ -376,38 +449,5 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       },
     );
-  }
-
-  Future<void> _confirmDelete(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Delete account?'),
-          content: const Text(
-            'This is a confirmation only. Seyra will not delete your account or any data in this build.',
-          ),
-          actions: [
-            TextButton(
-              key: const Key('delete_account_cancel_button'),
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              key: const Key('delete_account_confirm_button'),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account deletion is not available yet'),
-        ),
-      );
-    }
   }
 }

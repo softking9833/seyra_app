@@ -92,4 +92,18 @@ void main() {
     const error = AuthRemoteException(AuthRemoteErrorCode.invalidCredentials);
     expect(error.toString().contains('secret'), isFalse);
   });
+
+  test('delete account requires the current password and clears the session', () async {
+    await repository.register(username: 'ada', password: 'secret');
+    final wrong = await repository.deleteAccount(password: 'nope');
+    expect(
+      (wrong as FailureResult<void>).failure,
+      isA<InvalidCredentialsFailure>(),
+    );
+
+    final deleted = await repository.deleteAccount(password: 'secret');
+    expect(deleted, isA<Success<void>>());
+    final restored = await repository.restoreSession();
+    expect((restored as Success<AuthSession?>).value, isNull);
+  });
 }

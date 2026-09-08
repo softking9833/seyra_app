@@ -49,10 +49,20 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Seyra uses the camera for video calls and photos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Seyra uses the microphone for voice and video calls.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Seyra uses your photo library to send images.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:seyra/core/theme/app_colors.dart';
 import 'package:seyra/features/chat/domain/entities/conversation.dart';
+import 'package:seyra/features/chat/domain/usecases/refresh_conversations_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/watch_conversations_use_case.dart';
 import 'package:seyra/features/chat/presentation/widgets/conversation_tile.dart';
 
@@ -13,6 +14,7 @@ class ChatsHomeView extends StatefulWidget {
     required this.filter,
     required this.onFilterChanged,
     required this.watchConversations,
+    required this.refreshConversations,
     required this.onOpenConversation,
   });
 
@@ -20,6 +22,7 @@ class ChatsHomeView extends StatefulWidget {
   final ChatFilter filter;
   final ValueChanged<ChatFilter> onFilterChanged;
   final WatchConversationsUseCase watchConversations;
+  final RefreshConversationsUseCase refreshConversations;
   final ValueChanged<String> onOpenConversation;
 
   @override
@@ -65,28 +68,42 @@ class _ChatsHomeViewState extends State<ChatsHomeView> {
           child: StreamBuilder<List<Conversation>>(
             stream: _conversations,
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return _ChatListError(
+                  onRetry: () => widget.refreshConversations(),
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
               final items = _visible(
                 snapshot.data ?? const [],
                 widget.query,
                 widget.filter,
               );
               if (items.isEmpty) {
-                return const _EmptyConversations();
+                return _EmptyConversations(filter: widget.filter);
               }
-              return ListView.separated(
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const Divider(
-                  height: 1,
-                  indent: 80,
-                  color: AppColors.fieldBorder,
-                ),
-                itemBuilder: (context, index) {
-                  final conversation = items[index];
-                  return ConversationTile(
-                    conversation: conversation,
-                    onTap: () => widget.onOpenConversation(conversation.id),
-                  );
+              return RefreshIndicator(
+                onRefresh: () async {
+                  await widget.refreshConversations();
                 },
+                child: ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const Divider(
+                    height: 1,
+                    indent: 80,
+                    color: AppColors.fieldBorder,
+                  ),
+                  itemBuilder: (context, index) {
+                    final conversation = items[index];
+                    return ConversationTile(
+                      conversation: conversation,
+                      onTap: () => widget.onOpenConversation(conversation.id),
+                    );
+                  },
+                ),
               );
             },
           ),
@@ -103,7 +120,7 @@ class _ChatsHomeViewState extends State<ChatsHomeView> {
     final normalized = query.trim().toLowerCase();
     return conversations.where((item) {
       final matchesFilter = switch (filter) {
-        ChatFilter.chats => true,
+        ChatFilter.chats => item.kind == ConversationKind.direct,
         ChatFilter.groups => item.kind == ConversationKind.group,
         ChatFilter.channels => item.kind == ConversationKind.channel,
       };
@@ -159,10 +176,26 @@ class _FilterTab extends StatelessWidget {
 }
 
 class _EmptyConversations extends StatelessWidget {
-  const _EmptyConversations();
+  const _EmptyConversations({required this.filter});
+
+  final ChatFilter filter;
 
   @override
   Widget build(BuildContext context) {
+    final copy = switch (filter) {
+      ChatFilter.chats => (
+        'No conversations yet',
+        'Tap compose to start a private chat by username.',
+      ),
+      ChatFilter.groups => (
+        'No groups yet',
+        'Tap compose to create a private group and add members.',
+      ),
+      ChatFilter.channels => (
+        'No channels yet',
+        'Tap compose to create a channel.',
+      ),
+    };
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -176,14 +209,46 @@ class _EmptyConversations extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'No conversations yet',
+              copy.$1,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
             Text(
-              'Start a private chat when you\'re ready.',
+              copy.$2,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatListError extends StatelessWidget {
+  const _ChatListError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off, size: 48, color: AppColors.textSecondary),
+            const SizedBox(height: 12),
+            Text(
+              'Could not load chats',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              key: const Key('chats_retry_button'),
+              onPressed: onRetry,
+              child: const Text('Retry'),
             ),
           ],
         ),

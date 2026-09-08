@@ -37,6 +37,7 @@ migrate_working_dir/
 backend/.env
 backend/bin/
 backend/server.exe
+backend/.media/
 
 # Symbolication related
 app.*.symbols

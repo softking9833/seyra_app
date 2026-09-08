@@ -8,6 +8,7 @@ import 'package:seyra/features/auth/data/exceptions/auth_remote_exceptions.dart'
 import 'package:seyra/features/auth/data/models/auth_credentials_model.dart';
 import 'package:seyra/features/auth/data/models/auth_request_models.dart';
 import 'package:seyra/features/auth/data/models/auth_session_model.dart';
+import 'package:seyra/features/auth/data/models/current_account_model.dart';
 import 'package:seyra/features/auth/data/storage/auth_secure_storage_keys.dart';
 
 final class HttpAuthRemoteDataSource implements AuthRemoteDataSource {
@@ -98,7 +99,21 @@ final class HttpAuthRemoteDataSource implements AuthRemoteDataSource {
 
   @override
   Future<void> deleteAccount({required String password}) async {
-    throw const AuthRemoteUnavailableException();
+    await _authorized(
+      method: 'POST',
+      path: AuthApiEndpoints.deleteAccount,
+      jsonBody: DeleteAccountRequest(password: password).toJson(),
+    );
+    await _clearCredentials();
+  }
+
+  @override
+  Future<CurrentAccountModel> getCurrentAccount() async {
+    final response = await _authorized(
+      method: 'GET',
+      path: AuthApiEndpoints.currentUser,
+    );
+    return CurrentAccountModel.fromJson(_decodeObject(response.body));
   }
 
   Future<AuthSessionModel> _authenticate(
@@ -133,6 +148,40 @@ final class HttpAuthRemoteDataSource implements AuthRemoteDataSource {
     } on AuthRemoteException {
       await _clearCredentials();
       return null;
+    }
+  }
+
+  Future<ApiResponse> _authorized({
+    required String method,
+    required String path,
+    Object? jsonBody,
+  }) async {
+    var access = await secureStorage.read(AuthSecureStorageKeys.accessToken);
+    if (access == null || access.isEmpty) {
+      throw const AuthRemoteException(AuthRemoteErrorCode.unauthorized);
+    }
+    try {
+      return await _send(
+        method: method,
+        path: path,
+        headers: _bearer(access),
+        jsonBody: jsonBody,
+      );
+    } on AuthRemoteException catch (error) {
+      if (error.code != AuthRemoteErrorCode.sessionExpired) {
+        rethrow;
+      }
+      final restored = await _restoreWithRefresh();
+      if (restored == null) {
+        throw const AuthRemoteException(AuthRemoteErrorCode.sessionExpired);
+      }
+      access = await secureStorage.read(AuthSecureStorageKeys.accessToken);
+      return _send(
+        method: method,
+        path: path,
+        headers: _bearer(access),
+        jsonBody: jsonBody,
+      );
     }
   }
 

@@ -12,3 +12,6 @@ go run ./cmd/server
 Health check: `GET http://127.0.0.1:8080/health`
 
 The Android emulator reaches this host at `http://10.0.2.2:8080`.
+
+Messaging (`/v1/chats`, `/v1/realtime`) uses the same process. Messages are
+plaintext on the server until E2E encryption is designed.

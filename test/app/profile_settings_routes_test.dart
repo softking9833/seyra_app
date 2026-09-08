@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:seyra/app/app.dart';
 import 'package:seyra/app/di/app_dependencies.dart';
 import 'package:seyra/features/auth/data/datasources/mock_auth_remote_data_source.dart';
+import 'package:seyra/features/profile/presentation/pages/delete_account_page.dart';
 import 'package:seyra/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:seyra/features/profile/presentation/pages/settings_page.dart';
 
@@ -46,25 +47,42 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Ada'), findsWidgets);
-    expect(find.text('@ada'), findsOneWidget);
+    expect(find.text('@ada'), findsWidgets);
     expect(find.text('Edit Profile'), findsOneWidget);
+    expect(find.text('ACCOUNT INFORMATION'), findsOneWidget);
+    expect(find.text('Member since'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('profile_open_settings_button')));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsPage), findsOneWidget);
+    final settingsScroll = find.descendant(
+      of: find.byKey(const Key('settings_scroll')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.textContaining('Signal Protocol'),
+      300,
+      scrollable: settingsScroll,
+    );
+    expect(
+      find.textContaining('Signal Protocol'),
+      findsOneWidget,
+    );
 
     await tester.scrollUntilVisible(
       find.byKey(const Key('settings_logout_tile')),
-      400,
+      300,
+      scrollable: settingsScroll,
     );
-    await tester.tap(find.byKey(const Key('settings_logout_tile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Log out'));
     await tester.pumpAndSettle();
 
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.byType(SettingsPage), findsNothing);
   });
 
-  testWidgets('delete account confirmation does not sign the user out', (
+  testWidgets('delete account requires confirmation text and password', (
     tester,
   ) async {
     await register(tester);
@@ -84,12 +102,54 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('settings_delete_account_tile')));
     await tester.pumpAndSettle();
+    expect(find.byType(DeleteAccountPage), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('delete_account_confirm_button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(DeleteAccountPage), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('delete_account_cancel_button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.text('Sign in'), findsNothing);
+  });
+
+  testWidgets('delete account with password signs the user out', (
+    tester,
+  ) async {
+    await register(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Profile'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile_open_settings_button')));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('settings_delete_account_tile')),
+      400,
+    );
+    await tester.tap(find.byKey(const Key('settings_delete_account_tile')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('delete_account_confirm_text_field')),
+      'DELETE',
+    );
+    await tester.enterText(
+      find.byKey(const Key('delete_account_password_field')),
+      'secret',
+    );
+    await tester.pump();
     await tester.tap(find.byKey(const Key('delete_account_confirm_button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Account deletion is not available yet'), findsOneWidget);
-    expect(find.byType(SettingsPage), findsOneWidget);
-    expect(find.text('Sign in'), findsNothing);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.byType(SettingsPage), findsNothing);
+    expect(find.byType(DeleteAccountPage), findsNothing);
   });
 
   testWidgets('edit profile saves a local display name', (tester) async {

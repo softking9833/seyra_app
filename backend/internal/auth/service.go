@@ -6,7 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -24,9 +27,11 @@ func init() {
 }
 
 type Service struct {
-	store  Store
-	pepper string
-	now    func() time.Time
+	store   Store
+	pepper  string
+	now     func() time.Time
+	loginMu sync.Mutex
+	logins  map[string][]time.Time
 }
 
 func NewService(store Store, pepper string) *Service {
@@ -34,6 +39,7 @@ func NewService(store Store, pepper string) *Service {
 		store:  store,
 		pepper: pepper,
 		now:    time.Now,
+		logins: map[string][]time.Time{},
 	}
 }
 
@@ -74,6 +80,9 @@ func (s *Service) Login(ctx context.Context, username, password string) (IssuedS
 	if err != nil {
 		return IssuedSession{}, ErrInvalidCredentials
 	}
+	if s.loginLocked(normalized) {
+		return IssuedSession{}, ErrRateLimited
+	}
 	if err := ValidatePassword(password); err != nil {
 		return IssuedSession{}, ErrInvalidCredentials
 	}
@@ -83,14 +92,17 @@ func (s *Service) Login(ctx context.Context, username, password string) (IssuedS
 			if dummyPasswordHash != "" {
 				_, _ = ComparePassword(dummyPasswordHash, password)
 			}
+			s.noteLoginFailure(normalized)
 			return IssuedSession{}, ErrInvalidCredentials
 		}
 		return IssuedSession{}, err
 	}
 	ok, err := ComparePassword(user.PasswordHash, password)
 	if err != nil || !ok {
+		s.noteLoginFailure(normalized)
 		return IssuedSession{}, ErrInvalidCredentials
 	}
+	s.clearLoginFailures(normalized)
 	return s.issueSession(ctx, user)
 }
 
@@ -104,6 +116,78 @@ func (s *Service) CurrentSession(ctx context.Context, accessToken string) (User,
 		return User{}, Session{}, err
 	}
 	return user, session, nil
+}
+
+const (
+	minSearchQueryRunes = 1
+	maxSearchQueryRunes = 32
+	maxSearchResults    = 20
+)
+
+func NormalizeSearchQuery(query string) (string, error) {
+	value := strings.TrimSpace(query)
+	if value == "" {
+		return "", fmt.Errorf("%w: search query is required", ErrInvalidInput)
+	}
+	if utf8.RuneCountInString(value) < minSearchQueryRunes || utf8.RuneCountInString(value) > maxSearchQueryRunes {
+		return "", fmt.Errorf("%w: search query length is invalid", ErrInvalidInput)
+	}
+	if strings.ContainsAny(value, "%_\\") {
+		return "", fmt.Errorf("%w: search query contains invalid characters", ErrInvalidInput)
+	}
+	for _, r := range value {
+		if (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' {
+			return "", fmt.Errorf("%w: search query contains invalid characters", ErrInvalidInput)
+		}
+	}
+	return value, nil
+}
+
+type PublicUser struct {
+	ID       string
+	Username string
+}
+
+func (s *Service) SearchUsers(ctx context.Context, accessToken, query string) ([]PublicUser, error) {
+	actor, _, err := s.CurrentSession(ctx, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	normalized, err := NormalizeSearchQuery(query)
+	if err != nil {
+		return nil, err
+	}
+	found, err := s.store.SearchUsers(ctx, normalized, actor.ID, maxSearchResults)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PublicUser, 0, len(found))
+	for _, user := range found {
+		out = append(out, PublicUser{ID: user.ID, Username: user.Username})
+	}
+	return out, nil
+}
+
+func (s *Service) DeleteAccount(ctx context.Context, accessToken, password string) error {
+	user, _, err := s.CurrentSession(ctx, accessToken)
+	if err != nil {
+		return err
+	}
+	if err := ValidatePassword(password); err != nil {
+		return ErrInvalidCredentials
+	}
+	ok, err := ComparePassword(user.PasswordHash, password)
+	if err != nil || !ok {
+		return ErrInvalidCredentials
+	}
+	return s.store.DeleteUserAndSessions(ctx, user.ID)
+}
+
+func (s *Service) DeleteUserRecord(ctx context.Context, userID string) error {
+	if strings.TrimSpace(userID) == "" {
+		return ErrNotFound
+	}
+	return s.store.DeleteUserAndSessions(ctx, userID)
 }
 
 func (s *Service) Logout(ctx context.Context, accessToken string) error {
@@ -216,4 +300,83 @@ func newID(prefix string) string {
 	buf := make([]byte, 16)
 	_, _ = rand.Read(buf)
 	return prefix + "_" + hex.EncodeToString(buf)
+}
+
+func (s *Service) loginLocked(username string) bool {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	cutoff := s.now().Add(-15 * time.Minute)
+	var recent []time.Time
+	for _, t := range s.logins[username] {
+		if t.After(cutoff) {
+			recent = append(recent, t)
+		}
+	}
+	s.logins[username] = recent
+	return len(recent) >= 8
+}
+
+func (s *Service) noteLoginFailure(username string) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	s.logins[username] = append(s.logins[username], s.now())
+}
+
+func (s *Service) clearLoginFailures(username string) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	delete(s.logins, username)
+}
+
+func (s *Service) CreateBotUser(ctx context.Context, username string) (User, error) {
+	normalized, err := NormalizeUsername(username)
+	if err != nil {
+		return User{}, err
+	}
+	secret := make([]byte, 32)
+	_, _ = rand.Read(secret)
+	hash, err := HashPassword(hex.EncodeToString(secret))
+	if err != nil {
+		return User{}, err
+	}
+	user := User{
+		ID: newID("usr"), Username: normalized, PasswordHash: hash, CreatedAt: s.now().UTC(),
+	}
+	if err := s.store.CreateUser(ctx, user); err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *Service) ListSessions(ctx context.Context, accessToken string) ([]Session, error) {
+	_, session, err := s.CurrentSession(ctx, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	return s.store.ListSessions(ctx, session.UserID)
+}
+
+func (s *Service) RevokeSessionID(ctx context.Context, accessToken, sessionID string) error {
+	user, current, err := s.CurrentSession(ctx, accessToken)
+	if err != nil {
+		return err
+	}
+	sessions, err := s.store.ListSessions(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, sess := range sessions {
+		if sess.ID == sessionID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrNotFound
+	}
+	if sessionID == current.ID {
+		return s.store.RevokeSession(ctx, sessionID, s.now().UTC())
+	}
+	return s.store.RevokeSession(ctx, sessionID, s.now().UTC())
 }

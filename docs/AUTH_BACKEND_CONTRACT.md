@@ -9,14 +9,15 @@ The first-party Go server implements this contract under `backend/`.
 Development may use HTTP on the local machine. Staging and production must use TLS.
 
 
-
 ## Transport
 
-- Versioned paths under `/v1/auth`.
+- Versioned paths under `/v1/auth` and `/v1/users`.
 - JSON request/response bodies unless noted.
 - Production and staging **must** use TLS (`https`).
 - Development defaults to `http://10.0.2.2:8080` (Android emulator → host).
   Override with `--dart-define=SEYRA_API_BASE_URL=`. Never commit production secrets.
+- Flutter production/staging builds (`SEYRA_ENV=staging|production`) refuse HTTP
+  base URLs at startup.
 - Error bodies:
 
 ```json
@@ -37,6 +38,8 @@ Messages must never include passwords or tokens.
 | Current session | `GET` | `/v1/auth/session` | Access credential |
 | Refresh | `POST` | `/v1/auth/refresh` | Refresh credential |
 | Delete account | `POST` | `/v1/auth/account/delete` | Access credential + password |
+| Current profile | `GET` | `/v1/users/me` | Access credential |
+| Search usernames | `GET` | `/v1/users/search?q=` | Access credential |
 
 ### Register / login request (password is sent only here and on account deletion)
 
@@ -59,10 +62,52 @@ Messages must never include passwords or tokens.
 }
 ```
 
-### Logout / delete success
+`GET /v1/auth/session` returns `user` and `session` only (no credentials).
 
-Empty body. Delete account also requires `{ "password": "..." }` so the server
-can re-authenticate the destructive action.
+### Current profile (`GET /v1/users/me`)
+
+Returns only client-safe fields:
+
+```json
+{
+  "id": "usr_...",
+  "username": "ada",
+  "created_at": "2026-09-07T12:00:00.000Z"
+}
+```
+
+Must **not** include password hashes, access tokens, refresh tokens, session
+HMAC secrets, or other internal security fields.
+
+### Username search (`GET /v1/users/search?q=`)
+
+Authenticated prefix search on usernames (case-insensitive, 1–32
+`[A-Za-z0-9_]` characters). Returns at most 20 matches. The caller is omitted.
+Each item is only `{ "id", "username" }`.
+
+
+### Logout success
+
+Empty body (`204`).
+
+### Delete account
+
+Request (re-authentication):
+
+```json
+{ "password": "..." }
+```
+
+Success: empty body (`204`). The server must:
+
+1. Authenticate the access credential.
+2. Verify the submitted password against the stored Argon2id hash.
+3. In a database transaction, delete all sessions for that user, then delete
+   the user row.
+4. Never log the password.
+
+After success, the client must wipe locally stored access and refresh tokens
+and return to the unauthenticated Welcome/Login flow.
 
 ### Refresh request
 
@@ -79,6 +124,7 @@ be treated as revoked after a successful refresh.
 **Safe for domain and presentation**
 
 - `user.id`, `user.username`
+- Profile `id`, `username`, `created_at`
 - `session.id` (opaque identifier, not a secret)
 - `session.expires_at`
 
@@ -95,13 +141,13 @@ Passwords **must not** appear on `User` or `AuthSession`.
 ## Session semantics
 
 1. Login and register return a session plus credentials.
-2. Restore uses `GET /v1/auth/session` (or locally stored credentials later).
-   Until SecureStorage is wired, restore returns no session.
+2. Restore uses stored credentials with `GET /v1/auth/session`. Access and
+   refresh tokens live in `SecureStorage`, never on `AuthSession` or in UI.
 3. Access credentials expire (`expires_in` / `expires_at`). Refresh obtains a
    new pair; the client must not keep using the old access credential.
 4. Logout revokes the current server session. After logout, restore is empty.
-5. Account deletion revokes **all** sessions for that user, then deletes server
-   account data. The client must later wipe local/secure storage as well.
+5. Account deletion revokes **all** sessions for that user (by deleting session
+   rows), then deletes the user. The client wipes SecureStorage on success.
 
 
 ## Error categories
@@ -121,36 +167,35 @@ Error bodies must never include passwords or tokens.
 
 ## Security rules
 
-- Passwords travel only on register, login, and account deletion, over TLS.
+- Passwords travel only on register, login, and account deletion, over TLS
+  (HTTP is allowed only in local development).
 - The Flutter client never persists passwords.
 - The Flutter client never logs passwords or tokens.
-- The server **must** hash passwords with a slow password hash. The client
-  does not hash passwords as a substitute for TLS or server hashing.
-- Access and refresh credentials must eventually be stored in `SecureStorage`,
-  never in `LocalStorage`. Storage is **not** implemented in this step.
+- The server hashes passwords with Argon2id. The client does not hash
+  passwords as a substitute for TLS or server hashing.
+- Access and refresh credentials are stored in `SecureStorage`, never in
+  `LocalStorage`.
 - E2E private keys are **not** authentication credentials and must never be
   sent on these endpoints.
 - Authentication is independent from future E2E message encryption
   (`EncryptionService`). Replacing the auth backend must not require changing
   the crypto domain.
-- Account deletion must revoke sessions and remove corresponding server-side
-  and local data (local wipe is a later step).
 
 
 ## Client mapping
 
 ```
-presentation → domain use cases → AuthRepository
+presentation → domain use cases → AuthRepository / AccountRepository
 data: request/response models + AuthRemoteDataSource
 app/DI: composition root (swap the remote adapter without changing domain)
 ```
 
-A future HTTP/gRPC adapter implements `AuthRemoteDataSource` and is registered
+`HttpAuthRemoteDataSource` implements `AuthRemoteDataSource` and is registered
 only in `AppDependencies`. Domain and UI stay unchanged.
 
 
 ## Not in this step
 
-- Account-deletion API
 - Session route guards
 - E2E encryption
+- Chat backend

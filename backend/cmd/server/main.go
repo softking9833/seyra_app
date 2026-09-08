@@ -6,13 +6,17 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"seyra/backend/internal/auth"
+	"seyra/backend/internal/chat"
 	"seyra/backend/internal/config"
 	"seyra/backend/internal/database"
 	httpapi "seyra/backend/internal/http"
+	"seyra/backend/internal/media"
+	"seyra/backend/internal/notify"
 	"seyra/backend/migrations"
 )
 
@@ -35,20 +39,44 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	service := auth.NewService(auth.NewPostgresStore(pool), cfg.SessionPepper)
-	handler := httpapi.NewServer(service)
+	store := auth.NewPostgresStore(pool)
+	authService := auth.NewService(store, cfg.SessionPepper)
+	hub := chat.NewHub()
+	chatService := chat.NewService(chat.NewPostgresStore(pool), chat.NewAuthDirectory(store), hub)
+	blobs, err := media.NewLocalStore(cfg.MediaDir)
+	if err != nil {
+		log.Fatalf("media: %v", err)
+	}
+	chatService.SetBlobStore(blobs)
+	var pushSender notify.Sender = notify.NoopSender{}
+	if cfg.PushWebhookURL != "" {
+		pushSender = &notify.WebhookSender{URL: cfg.PushWebhookURL, Secret: cfg.PushWebhookAuth}
+	}
+	alerts := notify.NewService(notify.NewPostgresStore(pool), pushSender)
+	handler := httpapi.NewServer(authService, chatService, hub, alerts)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {
-		log.Printf("seyra auth listening on %s", cfg.HTTPAddr)
+		env := strings.ToLower(strings.TrimSpace(os.Getenv("SEYRA_ENV")))
+		cert := os.Getenv("SEYRA_TLS_CERT")
+		key := os.Getenv("SEYRA_TLS_KEY")
+		if env == "production" {
+			if cert == "" || key == "" {
+				log.Fatal("SEYRA_TLS_CERT and SEYRA_TLS_KEY are required when SEYRA_ENV=production")
+			}
+			log.Printf("seyra api listening on %s (tls)", cfg.HTTPAddr)
+			if err := server.ListenAndServeTLS(cert, key); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("http: %v", err)
+			}
+			return
+		}
+		log.Printf("seyra api listening on %s", cfg.HTTPAddr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("http: %v", err)
 		}

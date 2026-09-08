@@ -63,10 +63,40 @@ void main() {
       ),
     );
   });
+
+  test('loads current account from GET /v1/users/me', () async {
+    await storage.write(key: AuthSecureStorageKeys.accessToken, value: 'access');
+    api.response = const ApiResponse(
+      statusCode: 200,
+      body:
+          '{"id":"usr_1","username":"ada","created_at":"2026-01-02T03:04:05.000Z"}',
+    );
+
+    final account = await remote.getCurrentAccount();
+    expect(account.username, 'ada');
+    expect(account.id, 'usr_1');
+    expect(api.lastUri?.path, '/v1/users/me');
+  });
+
+  test('delete account clears stored credentials', () async {
+    await storage.write(key: AuthSecureStorageKeys.accessToken, value: 'access');
+    await storage.write(
+      key: AuthSecureStorageKeys.refreshToken,
+      value: 'refresh',
+    );
+    api.response = const ApiResponse(statusCode: 204, body: '');
+
+    await remote.deleteAccount(password: 'secret');
+
+    expect(await storage.read(AuthSecureStorageKeys.accessToken), isNull);
+    expect(await storage.read(AuthSecureStorageKeys.refreshToken), isNull);
+    expect(api.lastUri?.path, '/v1/auth/account/delete');
+  });
 }
 
 final class _FakeApiClient implements ApiClient {
   ApiResponse response = const ApiResponse(statusCode: 500, body: '{}');
+  Uri? lastUri;
 
   @override
   Future<ApiResponse> send({
@@ -75,6 +105,7 @@ final class _FakeApiClient implements ApiClient {
     Map<String, String>? headers,
     Object? jsonBody,
   }) async {
+    lastUri = uri;
     return response;
   }
 }

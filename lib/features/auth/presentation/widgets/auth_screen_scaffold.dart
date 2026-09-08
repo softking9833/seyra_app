@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:seyra/features/auth/presentation/widgets/auth_wave_footer.dart';
+import 'package:seyra/core/theme/app_colors.dart';
+import 'package:seyra/features/auth/presentation/widgets/auth_landing_backdrop.dart';
 
 class AuthScreenScaffold extends StatelessWidget {
   const AuthScreenScaffold({
@@ -14,15 +15,11 @@ class AuthScreenScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.surface,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: AuthWaveFooter(),
-          ),
+          const AuthLandingBackdrop(),
           SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -32,6 +29,7 @@ class AuthScreenScaffold extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: IconButton(
                       icon: const Icon(Icons.arrow_back),
+                      color: AppColors.navy,
                       onPressed: () => Navigator.of(context).maybePop(),
                     ),
                   )
@@ -41,17 +39,14 @@ class AuthScreenScaffold extends StatelessWidget {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       return SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+                        padding: const EdgeInsets.fromLTRB(28, 8, 28, 32),
                         child: ConstrainedBox(
                           constraints: BoxConstraints(
                             minHeight: constraints.maxHeight - 16,
                             maxWidth: 420,
                           ),
                           child: IntrinsicHeight(
-                            child: Align(
-                              alignment: Alignment.topCenter,
-                              child: child,
-                            ),
+                            child: child,
                           ),
                         ),
                       );

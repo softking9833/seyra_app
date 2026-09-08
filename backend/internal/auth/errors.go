@@ -33,10 +33,11 @@ func ValidatePassword(password string) error {
 }
 
 var (
-	ErrInvalidInput        = errors.New("invalid input")
-	ErrUsernameTaken       = errors.New("username taken")
-	ErrInvalidCredentials  = errors.New("invalid credentials")
-	ErrUnauthorized        = errors.New("unauthorized")
-	ErrSessionExpired      = errors.New("session expired")
-	ErrNotFound            = errors.New("not found")
+	ErrInvalidInput       = errors.New("invalid input")
+	ErrUsernameTaken      = errors.New("username taken")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrUnauthorized       = errors.New("unauthorized")
+	ErrSessionExpired     = errors.New("session expired")
+	ErrNotFound           = errors.New("not found")
+	ErrRateLimited        = errors.New("rate limited")
 )

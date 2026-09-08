@@ -12,7 +12,10 @@ final class Conversation {
     this.isOnline = false,
     this.isPinned = false,
     this.isMuted = false,
+    this.isArchived = false,
     this.statusText = '',
+    this.visibility = 'private',
+    this.peerId = '',
   });
 
   final String id;
@@ -25,13 +28,18 @@ final class Conversation {
   final bool isOnline;
   final bool isPinned;
   final bool isMuted;
+  final bool isArchived;
   final String statusText;
+  final String visibility;
+  final String peerId;
 
   Conversation copyWith({
     String? lastMessagePreview,
     DateTime? lastMessageAt,
     int? unreadCount,
     bool? isMuted,
+    bool? isArchived,
+    String? statusText,
   }) {
     return Conversation(
       id: id,
@@ -44,7 +52,10 @@ final class Conversation {
       isOnline: isOnline,
       isPinned: isPinned,
       isMuted: isMuted ?? this.isMuted,
-      statusText: statusText,
+      isArchived: isArchived ?? this.isArchived,
+      statusText: statusText ?? this.statusText,
+      visibility: visibility,
+      peerId: peerId,
     );
   }
 }

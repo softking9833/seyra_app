@@ -5,6 +5,7 @@ import 'package:seyra/features/auth/data/datasources/deferred_auth_remote_data_s
 import 'package:seyra/features/auth/data/exceptions/auth_remote_exceptions.dart';
 import 'package:seyra/features/auth/data/models/auth_credentials_model.dart';
 import 'package:seyra/features/auth/data/models/auth_session_model.dart';
+import 'package:seyra/features/auth/data/models/current_account_model.dart';
 import 'package:seyra/features/auth/data/models/user_model.dart';
 import 'package:seyra/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:seyra/features/auth/domain/entities/auth_session.dart';
@@ -198,5 +199,21 @@ final class _FakeAuthRemoteDataSource implements AuthRemoteDataSource {
     if (error != null) {
       throw error!;
     }
+  }
+
+  @override
+  Future<CurrentAccountModel> getCurrentAccount() async {
+    if (error != null) {
+      throw error!;
+    }
+    final current = session;
+    if (current == null) {
+      throw const AuthRemoteException(AuthRemoteErrorCode.unauthorized);
+    }
+    return CurrentAccountModel(
+      id: current.user.id,
+      username: current.user.username,
+      createdAt: DateTime.utc(2026, 1, 1),
+    );
   }
 }

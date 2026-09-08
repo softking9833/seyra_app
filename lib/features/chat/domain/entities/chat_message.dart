@@ -23,6 +23,13 @@ final class ChatMessage {
     this.replyToId,
     this.replyPreview,
     this.reactions = const [],
+    this.attachmentId,
+    this.contentType,
+    this.fileKey,
+    this.fileNonce,
+    this.e2e = false,
+    this.edited = false,
+    this.forwardedFromId,
   });
 
   final String id;
@@ -34,25 +41,49 @@ final class ChatMessage {
   final String? replyToId;
   final String? replyPreview;
   final List<MessageReaction> reactions;
+  final String? attachmentId;
+  final String? contentType;
+  final List<int>? fileKey;
+  final List<int>? fileNonce;
+  final bool e2e;
+  final bool edited;
+  final String? forwardedFromId;
+
+  bool isFrom(String userId) => senderId == userId;
 
   bool get isMine => senderId == ChatMessage.localUserId;
 
   static const localUserId = 'local-user';
 
   ChatMessage copyWith({
+    String? id,
     MessageDelivery? delivery,
+    String? replyPreview,
     List<MessageReaction>? reactions,
+    String? attachmentId,
+    String? contentType,
+    List<int>? fileKey,
+    List<int>? fileNonce,
+    bool? e2e,
+    bool? edited,
   }) {
     return ChatMessage(
-      id: id,
+      id: id ?? this.id,
       conversationId: conversationId,
       senderId: senderId,
       body: body,
       sentAt: sentAt,
       delivery: delivery ?? this.delivery,
       replyToId: replyToId,
-      replyPreview: replyPreview,
+      replyPreview: replyPreview ?? this.replyPreview,
       reactions: reactions ?? this.reactions,
+      attachmentId: attachmentId ?? this.attachmentId,
+      contentType: contentType ?? this.contentType,
+      fileKey: fileKey ?? this.fileKey,
+      fileNonce: fileNonce ?? this.fileNonce,
+      e2e: e2e ?? this.e2e,
+      edited: edited ?? this.edited,
+      forwardedFromId: forwardedFromId,
     );
   }
 }

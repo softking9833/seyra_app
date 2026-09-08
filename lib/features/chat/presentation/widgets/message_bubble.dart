@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:seyra/core/theme/app_colors.dart';
 import 'package:seyra/features/chat/domain/entities/chat_message.dart';
@@ -7,15 +9,21 @@ class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
     required this.message,
+    required this.currentUserId,
     required this.onLongPress,
+    this.onRetry,
+    this.onOpenAttachment,
   });
 
   final ChatMessage message;
+  final String currentUserId;
   final VoidCallback onLongPress;
+  final VoidCallback? onRetry;
+  final VoidCallback? onOpenAttachment;
 
   @override
   Widget build(BuildContext context) {
-    final mine = message.isMine;
+    final mine = message.isFrom(currentUserId);
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
@@ -84,13 +92,41 @@ class MessageBubble extends StatelessWidget {
                       ),
                     ],
                     Text(
-                      message.body,
+                      _displayBody(message),
                       style: TextStyle(
                         color: mine ? Colors.white : AppColors.textPrimary,
                         fontSize: 15,
                         height: 1.35,
                       ),
                     ),
+                    if (message.attachmentId != null &&
+                        message.attachmentId!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      InkWell(
+                        onTap: onOpenAttachment,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              message.e2e
+                                  ? Icons.lock_outline
+                                  : Icons.attach_file,
+                              size: 16,
+                              color: mine ? Colors.white : AppColors.primary,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              message.e2e ? 'Encrypted file' : 'Attachment',
+                              style: TextStyle(
+                                color: mine ? Colors.white : AppColors.primary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -109,8 +145,8 @@ class MessageBubble extends StatelessWidget {
                           Icon(
                             _deliveryIcon(message.delivery),
                             size: 14,
-                            color: message.delivery == MessageDelivery.read
-                                ? const Color(0xFFBBDEFB)
+                            color: message.delivery == MessageDelivery.failed
+                                ? const Color(0xFFFFCDD2)
                                 : Colors.white.withValues(alpha: 0.85),
                           ),
                         ],
@@ -119,6 +155,14 @@ class MessageBubble extends StatelessWidget {
                   ],
                 ),
               ),
+              if (mine &&
+                  message.delivery == MessageDelivery.failed &&
+                  onRetry != null)
+                TextButton(
+                  key: Key('retry_message_${message.id}'),
+                  onPressed: onRetry,
+                  child: const Text('Retry'),
+                ),
               if (message.reactions.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -151,6 +195,22 @@ class MessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _displayBody(ChatMessage message) {
+    final raw = message.body;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic> && decoded['v'] == 1) {
+        if (decoded['kind'] == 'sticker') {
+          return decoded['emoji'] as String? ?? raw;
+        }
+        if (decoded['kind'] == 'file') {
+          return decoded['name'] as String? ?? 'File';
+        }
+      }
+    } catch (_) {}
+    return raw;
   }
 
   IconData _deliveryIcon(MessageDelivery delivery) {

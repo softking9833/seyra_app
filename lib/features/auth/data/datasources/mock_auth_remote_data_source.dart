@@ -2,6 +2,7 @@ import 'package:seyra/features/auth/data/datasources/auth_remote_data_source.dar
 import 'package:seyra/features/auth/data/exceptions/auth_remote_exceptions.dart';
 import 'package:seyra/features/auth/data/models/auth_credentials_model.dart';
 import 'package:seyra/features/auth/data/models/auth_session_model.dart';
+import 'package:seyra/features/auth/data/models/current_account_model.dart';
 import 'package:seyra/features/auth/data/models/user_model.dart';
 
 /// In-memory auth adapter for the vertical slice.
@@ -18,6 +19,7 @@ final class MockAuthRemoteDataSource implements AuthRemoteDataSource {
 
   final Map<String, String> _passwordsByUsername = <String, String>{};
   final Map<String, String> _idsByUsername = <String, String>{};
+  final Map<String, DateTime> _createdAtByUsername = <String, DateTime>{};
   AuthSessionModel? _currentSession;
   int _nextId = 1;
 
@@ -47,6 +49,7 @@ final class MockAuthRemoteDataSource implements AuthRemoteDataSource {
     }
     _passwordsByUsername[key] = password;
     _idsByUsername[key] = 'usr_$_nextId';
+    _createdAtByUsername[key] = DateTime.now().toUtc();
     _nextId += 1;
     return _issueSession(key);
   }
@@ -86,7 +89,23 @@ final class MockAuthRemoteDataSource implements AuthRemoteDataSource {
     }
     _passwordsByUsername.remove(username);
     _idsByUsername.remove(username);
+    _createdAtByUsername.remove(username);
     _currentSession = null;
+  }
+
+  @override
+  Future<CurrentAccountModel> getCurrentAccount() async {
+    await _wait();
+    final session = _currentSession;
+    if (session == null) {
+      throw const AuthRemoteException(AuthRemoteErrorCode.unauthorized);
+    }
+    final username = session.user.username;
+    return CurrentAccountModel(
+      id: session.user.id,
+      username: username,
+      createdAt: _createdAtByUsername[username] ?? DateTime.now().toUtc(),
+    );
   }
 
   Future<void> _wait() async {

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:seyra/core/errors/result.dart';
 import 'package:seyra/core/theme/app_colors.dart';
 import 'package:seyra/features/auth/domain/entities/user.dart';
+import 'package:seyra/features/profile/domain/entities/account.dart';
 import 'package:seyra/features/profile/domain/entities/user_profile.dart';
+import 'package:seyra/features/profile/domain/usecases/get_account_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/watch_preferences_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/watch_profile_use_case.dart';
 import 'package:seyra/features/profile/presentation/widgets/profile_identity_card.dart';
@@ -14,15 +17,19 @@ class ProfilePage extends StatefulWidget {
     required this.user,
     required this.watchProfile,
     required this.watchPreferences,
+    required this.getAccount,
     required this.onOpenSettings,
     required this.onEditProfile,
+    required this.onLogout,
   });
 
   final User user;
   final WatchProfileUseCase watchProfile;
   final WatchPreferencesUseCase watchPreferences;
+  final GetAccountUseCase getAccount;
   final VoidCallback onOpenSettings;
   final VoidCallback onEditProfile;
+  final Future<void> Function() onLogout;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -31,6 +38,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   late final Stream<UserProfile> _profile;
   late final Stream<UserPreferences> _preferences;
+  late Future<Result<Account>> _account;
 
   @override
   void initState() {
@@ -40,6 +48,7 @@ class _ProfilePageState extends State<ProfilePage> {
       username: widget.user.username,
     );
     _preferences = widget.watchPreferences();
+    _account = widget.getAccount();
   }
 
   @override
@@ -59,96 +68,136 @@ class _ProfilePageState extends State<ProfilePage> {
             return ColoredBox(
               color: AppColors.surfaceMuted,
               child: ListView(
-              padding: const EdgeInsets.only(bottom: 32),
-              children: [
-                ProfileIdentityCard(
-                  profile: profile,
-                  onEdit: widget.onEditProfile,
-                ),
-                SettingsSection(
-                  title: 'About',
-                  children: [
-                    SettingsTile(
-                      icon: Icons.notes_outlined,
-                      title: 'Bio',
-                      subtitle: profile.bio.isEmpty
-                          ? 'Add a bio'
-                          : profile.bio,
-                      onTap: widget.onEditProfile,
-                    ),
-                    SettingsTile(
-                      icon: Icons.fingerprint,
-                      title: 'User ID',
-                      subtitle: profile.userId,
-                      trailing: const Icon(
-                        Icons.copy_outlined,
-                        size: 18,
-                        color: AppColors.textSecondary,
+                padding: const EdgeInsets.only(bottom: 32),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: Center(
+                      child: Image.asset(
+                        AppAssets.seyraLogo,
+                        height: 28,
+                        fit: BoxFit.contain,
+                        semanticLabel: 'Seyra',
                       ),
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(text: profile.userId));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('User ID copied locally'),
+                    ),
+                  ),
+                  ProfileIdentityCard(
+                    profile: profile,
+                    onEdit: widget.onEditProfile,
+                  ),
+                  FutureBuilder<Result<Account>>(
+                    future: _account,
+                    builder: (context, snapshot) {
+                      final result = snapshot.data;
+                      final account = switch (result) {
+                        Success(:final value) => value,
+                        _ => null,
+                      };
+                      final failed = result is FailureResult<Account>;
+                      return SettingsSection(
+                        title: 'Account information',
+                        children: [
+                          SettingsTile(
+                            icon: Icons.alternate_email,
+                            title: 'Username',
+                            subtitle:
+                                '@${account?.username ?? widget.user.username}',
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                SettingsSection(
-                  title: 'Privacy & security',
-                  children: [
-                    SettingsTile(
-                      icon: Icons.lock_outline,
-                      title: 'End-to-end encryption',
-                      subtitle: 'Prepared — not enabled yet',
-                    ),
-                    SettingsTile(
-                      icon: Icons.visibility_outlined,
-                      title: 'Last seen',
-                      subtitle: visibilityLabel(preferences.lastSeenVisibility),
-                      onTap: widget.onOpenSettings,
-                    ),
-                    SettingsTile(
-                      icon: Icons.photo_outlined,
-                      title: 'Profile photo',
-                      subtitle: visibilityLabel(
-                        preferences.profilePhotoVisibility,
+                          SettingsTile(
+                            icon: Icons.calendar_month_outlined,
+                            title: 'Member since',
+                            subtitle: snapshot.connectionState !=
+                                    ConnectionState.done
+                                ? 'Loading…'
+                                : account == null
+                                ? (failed
+                                    ? 'Could not load from server'
+                                    : 'Unavailable')
+                                : _formatDate(account.createdAt),
+                          ),
+                          SettingsTile(
+                            icon: Icons.fingerprint,
+                            title: 'User ID',
+                            subtitle: account?.id ?? profile.userId,
+                            trailing: const Icon(
+                              Icons.copy_outlined,
+                              size: 18,
+                              color: AppColors.textSecondary,
+                            ),
+                            onTap: () {
+                              Clipboard.setData(
+                                ClipboardData(
+                                  text: account?.id ?? profile.userId,
+                                ),
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('User ID copied locally'),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  SettingsSection(
+                    title: 'About',
+                    children: [
+                      SettingsTile(
+                        icon: Icons.notes_outlined,
+                        title: 'Bio',
+                        subtitle: profile.bio.isEmpty ? 'Add a bio' : profile.bio,
+                        onTap: widget.onEditProfile,
                       ),
-                      onTap: widget.onOpenSettings,
-                    ),
-                  ],
-                ),
-                SettingsSection(
-                  title: 'Account',
-                  children: [
-                    SettingsTile(
-                      icon: Icons.workspace_premium_outlined,
-                      title: 'Seyra Premium',
-                      subtitle: 'Coming soon',
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Premium is coming soon'),
-                          ),
-                        );
-                      },
-                    ),
-                    SettingsTile(
-                      icon: Icons.settings_outlined,
-                      title: 'Settings',
-                      subtitle: 'Privacy, notifications, and more',
-                      onTap: widget.onOpenSettings,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                    ],
+                  ),
+                  SettingsSection(
+                    title: 'Account',
+                    children: [
+                      SettingsTile(
+                        key: const Key('profile_open_settings_tile'),
+                        icon: Icons.settings_outlined,
+                        title: 'Settings',
+                        subtitle: 'Account, privacy, and more',
+                        onTap: widget.onOpenSettings,
+                      ),
+                      SettingsTile(
+                        key: const Key('profile_logout_tile'),
+                        icon: Icons.logout,
+                        iconColor: const Color(0xFFB91C1C),
+                        titleColor: const Color(0xFFB91C1C),
+                        title: 'Log out',
+                        subtitle: 'Sign out of this device',
+                        onTap: widget.onLogout,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             );
           },
         );
       },
     );
+  }
+
+  String _formatDate(DateTime value) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final local = value.toLocal();
+    return '${months[local.month - 1]} ${local.day}, ${local.year}';
   }
 }
