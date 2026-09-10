@@ -35,7 +35,7 @@ func (s *PostgresStore) CreateUser(ctx context.Context, user User) error {
 
 func (s *PostgresStore) GetUserByUsername(ctx context.Context, username string) (User, error) {
 	row := s.pool.QueryRow(ctx, `
-		SELECT id, username, password_hash, created_at
+		SELECT id, username, password_hash, created_at, COALESCE(display_name, ''), COALESCE(bio, ''), COALESCE(avatar_key, '')
 		FROM users
 		WHERE LOWER(username) = LOWER($1)
 	`, username)
@@ -71,7 +71,7 @@ func (s *PostgresStore) SearchUsers(ctx context.Context, query, excludeUserID st
 
 func (s *PostgresStore) GetUserByID(ctx context.Context, id string) (User, error) {
 	row := s.pool.QueryRow(ctx, `
-		SELECT id, username, password_hash, created_at
+		SELECT id, username, password_hash, created_at, COALESCE(display_name, ''), COALESCE(bio, ''), COALESCE(avatar_key, '')
 		FROM users
 		WHERE id = $1
 	`, id)
@@ -82,10 +82,10 @@ func (s *PostgresStore) CreateSession(ctx context.Context, session Session) erro
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO sessions (
 			id, user_id, access_token_hash, refresh_token_hash,
-			expires_at, refresh_expires_at, revoked_at, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			expires_at, refresh_expires_at, revoked_at, created_at, user_agent
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`, session.ID, session.UserID, session.AccessTokenHash, session.RefreshTokenHash,
-		session.ExpiresAt, session.RefreshExpiresAt, session.RevokedAt, session.CreatedAt)
+		session.ExpiresAt, session.RefreshExpiresAt, session.RevokedAt, session.CreatedAt, session.UserAgent)
 	if err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
@@ -95,7 +95,7 @@ func (s *PostgresStore) CreateSession(ctx context.Context, session Session) erro
 func (s *PostgresStore) GetSessionByAccessHash(ctx context.Context, hash string) (Session, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT id, user_id, access_token_hash, refresh_token_hash,
-		       expires_at, refresh_expires_at, revoked_at, created_at
+		       expires_at, refresh_expires_at, revoked_at, created_at, COALESCE(user_agent, '')
 		FROM sessions
 		WHERE access_token_hash = $1
 	`, hash)
@@ -105,7 +105,7 @@ func (s *PostgresStore) GetSessionByAccessHash(ctx context.Context, hash string)
 func (s *PostgresStore) GetSessionByRefreshHash(ctx context.Context, hash string) (Session, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT id, user_id, access_token_hash, refresh_token_hash,
-		       expires_at, refresh_expires_at, revoked_at, created_at
+		       expires_at, refresh_expires_at, revoked_at, created_at, COALESCE(user_agent, '')
 		FROM sessions
 		WHERE refresh_token_hash = $1
 	`, hash)
@@ -174,7 +174,7 @@ type rowScanner interface {
 
 func scanUser(row rowScanner) (User, error) {
 	var user User
-	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.CreatedAt)
+	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.CreatedAt, &user.DisplayName, &user.Bio, &user.AvatarKey)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -195,6 +195,7 @@ func scanSession(row rowScanner) (Session, error) {
 		&session.RefreshExpiresAt,
 		&session.RevokedAt,
 		&session.CreatedAt,
+		&session.UserAgent,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrNotFound
@@ -208,7 +209,7 @@ func scanSession(row rowScanner) (Session, error) {
 func (s *PostgresStore) ListSessions(ctx context.Context, userID string) ([]Session, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, user_id, access_token_hash, refresh_token_hash,
-		       expires_at, refresh_expires_at, revoked_at, created_at
+		       expires_at, refresh_expires_at, revoked_at, created_at, COALESCE(user_agent, '')
 		FROM sessions WHERE user_id = $1 ORDER BY created_at DESC
 	`, userID)
 	if err != nil {
@@ -224,6 +225,47 @@ func (s *PostgresStore) ListSessions(ctx context.Context, userID string) ([]Sess
 		out = append(out, sess)
 	}
 	return out, rows.Err()
+}
+
+func (s *PostgresStore) SetSessionUserAgent(ctx context.Context, sessionID, userAgent string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE sessions SET user_agent = $2 WHERE id = $1`, sessionID, userAgent)
+	return err
+}
+
+func (s *PostgresStore) UpdateUserProfile(ctx context.Context, userID, displayName, bio string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET display_name = $2, bio = $3 WHERE id = $1`, userID, displayName, bio)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *PostgresStore) UpdateUsername(ctx context.Context, userID, username string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET username = $2 WHERE id = $1`, userID, username)
+	if isUniqueViolation(err) {
+		return ErrUsernameTaken
+	}
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *PostgresStore) SetAvatarKey(ctx context.Context, userID, avatarKey string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET avatar_key = $2 WHERE id = $1`, userID, avatarKey)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func isUniqueViolation(err error) bool {

@@ -46,6 +46,7 @@ Private is the default. Public channels appear in `GET /v1/channels/discover?q=`
 | Stickers | `GET` | `/v1/stickers` (built-in pack) |
 | Last seen | `GET` | `/v1/users/{user_id}/last-seen` (1-to-1 + privacy) |
 | Read receipts | `GET` | `/v1/chats/{chat_id}/receipts` (1-to-1 + peer privacy) |
+| Mark chat read | `POST` | `/v1/chats/{chat_id}/read` (updates `last_read_at`; 1-to-1 peers with receipts enabled get `receipt.updated`) |
 | Edit own **plaintext** message | `PATCH` | `/v1/chats/{chat_id}/messages/{message_id}` (`e2e` messages cannot be edited) |
 | Toggle reaction | `PUT` | `/v1/chats/{chat_id}/messages/{message_id}/reactions` |
 | Search | `GET` | `/v1/search?q=&type=` (`type` optional: users, chats, groups, channels, messages). Message search matches **plaintext only** (`e2e=false`) in rooms the caller can read. User hits honor `profile_visible`. |

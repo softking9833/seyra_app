@@ -11,6 +11,7 @@ abstract final class AppRoutes {
   static const newGroup = '/new-group';
   static const newChannel = '/new-channel';
   static const chatDetails = '/chat-details';
+  static const roomAdmin = '/room-admin';
   static const globalSearch = '/search';
   static const discoverChannels = '/discover-channels';
   static const privacy = '/privacy';
@@ -18,4 +19,9 @@ abstract final class AppRoutes {
   static const bots = '/bots';
   static const callHistory = '/calls';
   static const call = '/call';
+  static const username = '/username';
+  static const encryption = '/encryption';
+  static const security = '/security';
+  static const about = '/about';
+  static const storage = '/storage';
 }

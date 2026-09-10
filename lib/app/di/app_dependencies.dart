@@ -25,7 +25,7 @@ import 'package:seyra/features/auth/domain/usecases/restore_session_use_case.dar
 import 'package:seyra/features/chat/data/datasources/chat_data_source.dart';
 import 'package:seyra/features/chat/data/datasources/http_chat_data_source.dart';
 import 'package:seyra/features/chat/data/datasources/mock_chat_data_source.dart';
-import 'package:seyra/features/chat/data/realtime/io_chat_realtime.dart';
+import 'package:seyra/features/chat/data/realtime/chat_realtime_impl.dart';
 import 'package:seyra/features/chat/data/repositories/chat_repository_impl.dart';
 import 'package:seyra/features/chat/data/repositories/http_chat_social_repository.dart';
 import 'package:seyra/features/chat/data/repositories/mock_chat_social_repository.dart';
@@ -49,12 +49,15 @@ import 'package:seyra/features/chat/domain/usecases/room_member_use_cases.dart';
 import 'package:seyra/features/chat/domain/usecases/watch_conversations_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/watch_messages_use_case.dart';
 import 'package:seyra/features/chat/domain/usecases/watch_peer_typing_use_case.dart';
+import 'package:seyra/core/theme/theme_controller.dart';
+import 'package:seyra/features/profile/data/datasources/http_profile_data_source.dart';
 import 'package:seyra/features/profile/data/datasources/mock_profile_data_source.dart';
 import 'package:seyra/features/profile/data/datasources/profile_data_source.dart';
 import 'package:seyra/features/profile/data/repositories/account_repository_impl.dart';
 import 'package:seyra/features/profile/data/repositories/profile_repository_impl.dart';
 import 'package:seyra/features/profile/domain/repositories/account_repository.dart';
 import 'package:seyra/features/profile/domain/repositories/profile_repository.dart';
+import 'package:seyra/features/profile/domain/usecases/change_username_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/get_account_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/update_preferences_use_case.dart';
 import 'package:seyra/features/profile/domain/usecases/update_profile_use_case.dart';
@@ -107,6 +110,8 @@ abstract final class AppDependencies {
   static late UpdateProfileUseCase updateProfileUseCase;
   static late WatchPreferencesUseCase watchPreferencesUseCase;
   static late UpdatePreferencesUseCase updatePreferencesUseCase;
+  static late ChangeUsernameUseCase changeUsernameUseCase;
+  static late ThemeController themeController;
   static late NotificationRepository notificationRepository;
   static late RegisterDeviceUseCase registerDeviceUseCase;
   static late UnregisterDeviceUseCase unregisterDeviceUseCase;
@@ -179,15 +184,25 @@ abstract final class AppDependencies {
     clearConversationUseCase = ClearConversationUseCase(chatRepository);
     setConversationMutedUseCase = SetConversationMutedUseCase(chatRepository);
 
-    profileDataSource = profileSource ?? MockProfileDataSource();
+    themeController = ThemeController();
+    final httpMode = appConfig.authBackendMode == AuthBackendMode.http &&
+        remoteDataSource == null;
+    profileDataSource = profileSource ??
+        (httpMode
+            ? HttpProfileDataSource(
+                apiClient: HttpApiClient(),
+                secureStorage: FlutterSecureStorageAdapter(),
+                baseUrl: Uri.parse(appConfig.apiBaseUrl),
+                themeController: themeController,
+              )
+            : MockProfileDataSource(themeController: themeController));
     profileRepository = ProfileRepositoryImpl(dataSource: profileDataSource);
     watchProfileUseCase = WatchProfileUseCase(profileRepository);
     updateProfileUseCase = UpdateProfileUseCase(profileRepository);
     watchPreferencesUseCase = WatchPreferencesUseCase(profileRepository);
     updatePreferencesUseCase = UpdatePreferencesUseCase(profileRepository);
+    changeUsernameUseCase = ChangeUsernameUseCase(profileRepository);
 
-    final httpMode = appConfig.authBackendMode == AuthBackendMode.http &&
-        remoteDataSource == null;
     notificationRepository = httpMode
         ? HttpNotificationRepository(
             apiClient: HttpApiClient(),

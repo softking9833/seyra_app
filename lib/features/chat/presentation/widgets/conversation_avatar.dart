@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:seyra/features/chat/domain/entities/conversation.dart';
+import 'package:seyra/features/profile/presentation/widgets/user_avatar.dart';
 
 class ConversationAvatar extends StatelessWidget {
   const ConversationAvatar({
@@ -23,46 +24,24 @@ class ConversationAvatar extends StatelessWidget {
     final color = colors[conversation.title.hashCode.abs() % colors.length];
     final radius = size / 2;
 
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        children: [
-          CircleAvatar(
-            radius: radius,
-            backgroundColor: color,
-            child: conversation.kind == ConversationKind.direct
-                ? Text(
-                    conversation.initials,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: size * 0.32,
-                    ),
-                  )
-                : Icon(
-                    conversation.kind == ConversationKind.group
-                        ? Icons.group_outlined
-                        : Icons.campaign_outlined,
-                    color: Colors.white,
-                    size: size * 0.46,
-                  ),
-          ),
-          if (conversation.isOnline)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Container(
-                width: size * 0.24,
-                height: size * 0.24,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF22C55E),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-              ),
-            ),
-        ],
+    if (conversation.kind == ConversationKind.direct &&
+        conversation.peerId.isNotEmpty) {
+      return UserAvatar(
+        userId: conversation.peerId,
+        initials: conversation.initials,
+        radius: radius,
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: color,
+      child: Icon(
+        conversation.kind == ConversationKind.group
+            ? Icons.group_outlined
+            : Icons.campaign_outlined,
+        color: Colors.white,
+        size: size * 0.46,
       ),
     );
   }

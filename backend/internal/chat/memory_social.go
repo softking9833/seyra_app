@@ -55,7 +55,7 @@ func (s *MemoryStore) GetPrivacy(_ context.Context, userID string) (PrivacySetti
 	}
 	return PrivacySettings{
 		UserID: userID, LastSeenVisible: true, ReadReceipts: true,
-		TypingVisible: true, ProfileVisible: true, NotificationPreview: true,
+		TypingVisible: true, ProfileVisible: true, NotificationPreview: true, PhotoVisible: true,
 	}, nil
 }
 
@@ -304,6 +304,38 @@ func (s *MemoryStore) ListCalls(_ context.Context, userID string, limit int) ([]
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (s *MemoryStore) DeleteCall(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.calls[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.calls, id)
+	return nil
+}
+
+func (s *MemoryStore) DeleteCallsForUser(_ context.Context, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, call := range s.calls {
+		keep := true
+		if call.CallerID == userID {
+			keep = false
+		} else {
+			for _, pid := range call.ParticipantIDs {
+				if pid == userID {
+					keep = false
+					break
+				}
+			}
+		}
+		if !keep {
+			delete(s.calls, id)
+		}
+	}
+	return nil
 }
 
 func (s *MemoryStore) InsertBot(_ context.Context, bot Bot) error {

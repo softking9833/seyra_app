@@ -34,15 +34,17 @@ const (
 	EventPinned         = "message.pinned"
 	EventUnpinned       = "message.unpinned"
 	EventTyping         = "typing"
+	EventReceiptUpdated = "receipt.updated"
 )
 
 type PrivacySettings struct {
-	UserID               string
-	LastSeenVisible      bool
-	ReadReceipts         bool
-	TypingVisible        bool
-	ProfileVisible       bool
-	NotificationPreview  bool
+	UserID              string
+	LastSeenVisible     bool
+	ReadReceipts        bool
+	TypingVisible       bool
+	ProfileVisible      bool
+	NotificationPreview bool
+	PhotoVisible        bool
 }
 
 type InviteLink struct {

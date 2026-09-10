@@ -71,6 +71,7 @@ code, not a marketing claim. **Seyra is not fully end-to-end encrypted.**
 | Blocking | Direct chat create + direct send; invite join vs creator |
 | `read_receipts` | `GET /v1/chats/{id}/receipts` returns the peer's `last_read_at` for a 1-to-1 chat only when the **peer** has `read_receipts` enabled. |
 | `last_seen_visible` | `GET /v1/users/{id}/last-seen` for a 1-to-1 peer. Hidden when the peer disabled the setting. Not a live online indicator. Presence is updated on authenticated REST (`user_presence`). |
+| `photo_visible` | `GET /v1/users/{id}/avatar`. Hidden from others when disabled. Owners can always fetch their own photo. There is no contacts graph; UI exposes Everyone / Nobody only. |
 | `typing_visible` | WebSocket inbound `typing` events. If the sender disabled the setting, the server does not broadcast. The chat UI shows a real typing indicator from those events. |
 
 ## Logging

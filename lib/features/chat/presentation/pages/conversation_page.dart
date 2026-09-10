@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:seyra/core/errors/result.dart';
 import 'package:seyra/core/theme/app_colors.dart';
 import 'package:file_picker/file_picker.dart';
@@ -24,6 +24,7 @@ import 'package:seyra/features/chat/domain/usecases/watch_messages_use_case.dart
 import 'package:seyra/features/chat/domain/usecases/watch_peer_typing_use_case.dart';
 import 'package:seyra/features/chat/presentation/formatters/chat_time_format.dart';
 import 'package:seyra/features/chat/presentation/widgets/conversation_avatar.dart';
+import 'package:seyra/features/chat/presentation/widgets/message_action_menu.dart';
 import 'package:seyra/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:seyra/features/chat/presentation/widgets/message_composer.dart';
 import 'package:seyra/features/chat/data/crypto/attachment_aead.dart';
@@ -85,6 +86,9 @@ class _ConversationPageState extends State<ConversationPage> {
   String? _presencePeerId;
   UploadCancelToken? _uploadCancel;
   _PendingUpload? _failedUpload;
+  var _selectedIds = <String>{};
+  var _cachedMessages = const <ChatMessage>[];
+  var _allConversations = const <Conversation>[];
 
   static const _emojis = ['😀', '😂', '😍', '👍', '🔥', '🎉', '💙', '🙏'];
 
@@ -287,18 +291,29 @@ class _ConversationPageState extends State<ConversationPage> {
           }
         }
         _cachedConversation = conversation;
+        _allConversations = conversationSnapshot.data ?? const [];
         _maybeLoadPresence(conversation);
 
         return StreamBuilder<List<ChatMessage>>(
           stream: _messages,
           builder: (context, messageSnapshot) {
+            _cachedMessages = messageSnapshot.data ?? const [];
             return StreamBuilder<bool>(
               stream: _typing,
               builder: (context, typingSnapshot) {
                 final typing = typingSnapshot.data ?? false;
-                return Scaffold(
-                  backgroundColor: const Color(0xFFE8EEF8),
-                  appBar: _appBar(conversation, typing),
+                return PopScope(
+                  canPop: _selectedIds.isEmpty,
+                  onPopInvokedWithResult: (didPop, _) {
+                    if (!didPop) {
+                      _clearSelection();
+                    }
+                  },
+                  child: Scaffold(
+                  backgroundColor: AppColors.scaffoldOf(context),
+                  appBar: _selectedIds.length > 1
+                      ? _selectionBar()
+                      : _appBar(conversation, typing),
                   body: Column(
                     children: [
                       if (_uploadProgress != null)
@@ -321,7 +336,7 @@ class _ConversationPageState extends State<ConversationPage> {
                         ),
                       if (_failedUpload != null)
                         Material(
-                          color: const Color(0xFFFFEBEE),
+                          color: AppColors.dangerFillOf(context),
                           child: ListTile(
                             dense: true,
                             title: const Text('Upload failed'),
@@ -333,15 +348,18 @@ class _ConversationPageState extends State<ConversationPage> {
                         ),
                       Expanded(
                         child: _MessageHistory(
-                          messages: messageSnapshot.data ?? const [],
+                          messages: _cachedMessages,
                           currentUserId: widget.currentUserId,
                           typing: typing,
+                          selectedIds: _selectedIds,
+                          onTap: _onMessageTap,
                           onLongPress: _openMessageActions,
                           onRetry: _retry,
                           onOpenAttachment: _openAttachment,
                         ),
                       ),
-                      MessageComposer(
+                      if (_selectedIds.length <= 1)
+                        MessageComposer(
                         controller: _composer,
                         hasText: _hasText,
                         replyTo: _replyTo,
@@ -353,11 +371,20 @@ class _ConversationPageState extends State<ConversationPage> {
                         onSend: _send,
                         onAttach: _showAttachments,
                         onEmoji: _showEmojis,
-                        onMic: () => _comingSoon('Voice messages'),
+                        onMic: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Voice notes are not in this build',
+                              ),
+                            ),
+                          );
+                        },
                         onCancelReply: () => setState(() => _replyTo = null),
                       ),
                     ],
                   ),
+                ),
                 );
               },
             );
@@ -365,6 +392,253 @@ class _ConversationPageState extends State<ConversationPage> {
         );
       },
     );
+  }
+
+  PreferredSizeWidget _selectionBar() {
+    return AppBar(
+      leading: IconButton(
+        tooltip: 'Cancel',
+        onPressed: _clearSelection,
+        icon: const Icon(Icons.close),
+      ),
+      title: Text('${_selectedIds.length}'),
+      actions: [
+        IconButton(
+          tooltip: 'Forward',
+          onPressed: _forwardSelected,
+          icon: const Icon(Icons.forward_rounded),
+        ),
+        IconButton(
+          tooltip: 'Delete',
+          onPressed: () => unawaited(_deleteSelected()),
+          icon: const Icon(Icons.delete_outline),
+        ),
+        TextButton(
+          onPressed: _clearSelection,
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+
+  void _clearSelection() {
+    setState(() => _selectedIds = {});
+  }
+
+  void _onMessageTap(ChatMessage message) {
+    if (_selectedIds.isEmpty) {
+      return;
+    }
+    setState(() {
+      final next = {..._selectedIds};
+      if (!next.add(message.id)) {
+        next.remove(message.id);
+      }
+      _selectedIds = next;
+    });
+  }
+
+  ChatMessage? _messageById(String id) {
+    for (final item in _cachedMessages) {
+      if (item.id == id) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openMessageActions(ChatMessage message, Offset anchor) async {
+    if (_selectedIds.isNotEmpty) {
+      _onMessageTap(message);
+      return;
+    }
+    setState(() => _selectedIds = {message.id});
+    final mine = message.isFrom(widget.currentUserId);
+    var keepSelection = true;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return MessageActionPopup(
+          anchor: anchor,
+          canDelete: mine,
+          onReact: (emoji) {
+            keepSelection = false;
+            Navigator.pop(context);
+            widget.reactToMessage(
+              conversationId: widget.conversationId,
+              messageId: message.id,
+              emoji: emoji,
+            );
+          },
+          onReply: () {
+            keepSelection = false;
+            Navigator.pop(context);
+            setState(() => _replyTo = message);
+          },
+          onCopy: () {
+            keepSelection = false;
+            Navigator.pop(context);
+            Clipboard.setData(ClipboardData(text: message.body));
+          },
+          onPin: () {
+            keepSelection = false;
+            Navigator.pop(context);
+            final social = widget.social;
+            if (social == null) {
+              _comingSoon('Pins');
+              return;
+            }
+            social.pinMessage(
+              conversationId: widget.conversationId,
+              messageId: message.id,
+            );
+          },
+          onDelete: () {
+            keepSelection = false;
+            Navigator.pop(context);
+            unawaited(_deleteSelected(ids: {message.id}));
+          },
+          onMoreEmoji: () {
+            Navigator.pop(context);
+            keepSelection = false;
+            _showMoreReactions(message);
+          },
+        );
+      },
+    );
+    if (!mounted) {
+      return;
+    }
+    if (!keepSelection) {
+      setState(() => _selectedIds = {});
+    }
+  }
+
+  void _showMoreReactions(ChatMessage message) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF252A36),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Wrap(
+              spacing: 12,
+              children: [
+                for (final emoji in _emojis)
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.reactToMessage(
+                        conversationId: widget.conversationId,
+                        messageId: message.id,
+                        emoji: emoji,
+                      );
+                    },
+                    child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteSelected({Set<String>? ids}) async {
+    final target = ids ?? _selectedIds;
+    final deletable = target.where((id) {
+      final message = _messageById(id);
+      return message != null && message.isFrom(widget.currentUserId);
+    }).toList();
+    if (deletable.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You can only delete your own messages')),
+        );
+      }
+      return;
+    }
+    final confirmed = await showDeleteMessagesDialog(
+      context,
+      count: deletable.length,
+    );
+    if (!confirmed || !mounted) {
+      return;
+    }
+    for (final id in deletable) {
+      final result = await widget.deleteMessage(
+        conversationId: widget.conversationId,
+        messageId: id,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (result is FailureResult<void>) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.failure.message)),
+        );
+        return;
+      }
+    }
+    _clearSelection();
+  }
+
+  Future<void> _forwardSelected() async {
+    final social = widget.social;
+    if (social == null) {
+      _comingSoon('Forward');
+      return;
+    }
+    final destinations = _allConversations
+        .where((item) => item.id != widget.conversationId)
+        .toList();
+    if (destinations.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No other chats to forward to')),
+      );
+      return;
+    }
+    final picked = await showDialog<Conversation>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E232E),
+          title: const Text('Forward to', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: 320,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final conversation in destinations)
+                  ListTile(
+                    title: Text(
+                      conversation.title,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    onTap: () => Navigator.pop(context, conversation),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked == null) {
+      return;
+    }
+    for (final id in _selectedIds) {
+      await social.forwardMessage(
+        sourceId: widget.conversationId,
+        messageId: id,
+        destinationId: picked.id,
+      );
+    }
+    if (mounted) {
+      _clearSelection();
+    }
   }
 
   PreferredSizeWidget _appBar(Conversation? conversation, bool typing) {
@@ -378,7 +652,6 @@ class _ConversationPageState extends State<ConversationPage> {
                     : ''));
 
     return AppBar(
-      backgroundColor: Colors.white,
       titleSpacing: 0,
       title: conversation == null
           ? Text(title)
@@ -411,8 +684,8 @@ class _ConversationPageState extends State<ConversationPage> {
                           style: TextStyle(
                             fontSize: 12,
                             color: typing
-                                ? AppColors.primary
-                                : AppColors.textSecondary,
+                                ? AppColors.accentOf(context)
+                                : AppColors.hintOf(context),
                             fontWeight: typing
                                 ? FontWeight.w600
                                 : FontWeight.w400,
@@ -459,6 +732,11 @@ class _ConversationPageState extends State<ConversationPage> {
               }
             } else if (value == 'clear') {
               widget.clearConversation(widget.conversationId);
+            } else if (value == 'admin' && conversation != null) {
+              Navigator.of(context).pushNamed(
+                AppRoutes.roomAdmin,
+                arguments: conversation,
+              );
             }
           },
           itemBuilder: (context) => [
@@ -468,6 +746,12 @@ class _ConversationPageState extends State<ConversationPage> {
             ),
             const PopupMenuItem(value: 'search', child: Text('Search')),
             const PopupMenuItem(value: 'gallery', child: Text('Media')),
+            if (conversation?.kind == ConversationKind.group ||
+                conversation?.kind == ConversationKind.channel)
+              const PopupMenuItem(
+                value: 'admin',
+                child: Text('Administrators'),
+              ),
             const PopupMenuItem(value: 'clear', child: Text('Clear history')),
           ],
         ),
@@ -543,105 +827,6 @@ class _ConversationPageState extends State<ConversationPage> {
     }
   }
 
-  Future<void> _openMessageActions(ChatMessage message) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    for (final emoji in ['❤️', '👍', '😂', '😮', '😢'])
-                      IconButton(
-                        onPressed: () {
-                          widget.reactToMessage(
-                            conversationId: widget.conversationId,
-                            messageId: message.id,
-                            emoji: emoji,
-                          );
-                          Navigator.pop(context);
-                        },
-                        icon: Text(emoji, style: const TextStyle(fontSize: 22)),
-                      ),
-                  ],
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.reply),
-                title: const Text('Reply'),
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() => _replyTo = message);
-                },
-              ),
-              if (widget.social != null)
-                ListTile(
-                  leading: const Icon(Icons.push_pin_outlined),
-                  title: const Text('Pin'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    widget.social!.pinMessage(
-                      conversationId: widget.conversationId,
-                      messageId: message.id,
-                    );
-                  },
-                ),
-              if (message.isFrom(widget.currentUserId))
-                ListTile(
-                  leading: const Icon(Icons.delete_outline),
-                  title: const Text('Delete'),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final confirmed = await showDialog<bool>(
-                      context: this.context,
-                      builder: (context) {
-                        return AlertDialog(
-                          title: const Text('Delete message?'),
-                          content: const Text(
-                            'This removes the message for you and the other participant.',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancel'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Delete'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                    if (confirmed != true) {
-                      return;
-                    }
-                    final result = await widget.deleteMessage(
-                      conversationId: widget.conversationId,
-                      messageId: message.id,
-                    );
-                    if (!mounted) {
-                      return;
-                    }
-                    if (result is FailureResult<void>) {
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                        SnackBar(content: Text(result.failure.message)),
-                      );
-                    }
-                  },
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 
   void _showAttachments() {
     showModalBottomSheet<void>(
@@ -671,10 +856,8 @@ class _ConversationPageState extends State<ConversationPage> {
               ListTile(
                 leading: const Icon(Icons.location_on_outlined),
                 title: const Text('Location'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _comingSoon('Location sharing');
-                },
+                subtitle: const Text('Not available in this build'),
+                enabled: false,
               ),
             ],
           ),
@@ -774,6 +957,9 @@ class _ConversationPageState extends State<ConversationPage> {
         'conversationId': widget.conversationId,
         'video': video,
         'outgoing': true,
+        'title': _cachedConversation?.title ?? '',
+        'peerId': _cachedConversation?.peerId ?? '',
+        'initials': _cachedConversation?.initials ?? '',
       },
     );
   }
@@ -919,7 +1105,7 @@ class _ConversationPageState extends State<ConversationPage> {
 
   void _comingSoon(String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature coming soon')),
+      SnackBar(content: Text('$feature is not available without the chat backend')),
     );
   }
 }
@@ -941,6 +1127,8 @@ class _MessageHistory extends StatelessWidget {
     required this.messages,
     required this.currentUserId,
     required this.typing,
+    required this.selectedIds,
+    required this.onTap,
     required this.onLongPress,
     required this.onRetry,
     required this.onOpenAttachment,
@@ -949,7 +1137,9 @@ class _MessageHistory extends StatelessWidget {
   final List<ChatMessage> messages;
   final String currentUserId;
   final bool typing;
-  final ValueChanged<ChatMessage> onLongPress;
+  final Set<String> selectedIds;
+  final ValueChanged<ChatMessage> onTap;
+  final void Function(ChatMessage message, Offset anchor) onLongPress;
   final ValueChanged<ChatMessage> onRetry;
   final ValueChanged<ChatMessage> onOpenAttachment;
 
@@ -968,7 +1158,9 @@ class _MessageHistory extends StatelessWidget {
         MessageBubble(
           message: message,
           currentUserId: currentUserId,
-          onLongPress: () => onLongPress(message),
+          selected: selectedIds.contains(message.id),
+          onTap: () => onTap(message),
+          onLongPress: (anchor) => onLongPress(message, anchor),
           onRetry: message.delivery == MessageDelivery.failed
               ? () => onRetry(message)
               : null,

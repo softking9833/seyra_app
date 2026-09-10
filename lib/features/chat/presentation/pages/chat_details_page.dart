@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:seyra/app/router/app_routes.dart';
 import 'package:seyra/core/errors/result.dart';
 import 'package:seyra/core/theme/app_colors.dart';
 import 'package:seyra/features/chat/domain/entities/conversation.dart';
@@ -153,7 +154,7 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surfaceMuted,
+      backgroundColor: AppColors.scaffoldOf(context),
       appBar: AppBar(
         title: Text(
           widget.conversation.kind == ConversationKind.group
@@ -174,7 +175,7 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontSize: 22,
-              color: AppColors.navy,
+              color: AppColors.textOf(context),
             ),
           ),
           if (widget.conversation.statusText.isNotEmpty)
@@ -187,6 +188,26 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
               ),
             ),
           if (_isRoom) _membersSection(context),
+          if (_isRoom)
+            SettingsSection(
+              title: 'Administration',
+              children: [
+                SettingsTile(
+                  key: const Key('open_administrators'),
+                  icon: Icons.admin_panel_settings_outlined,
+                  title: 'Administrators',
+                  subtitle: _canManage
+                      ? 'Roles, members, and invite link'
+                      : 'View owner and admins',
+                  onTap: () {
+                    Navigator.of(context).pushNamed(
+                      AppRoutes.roomAdmin,
+                      arguments: widget.conversation,
+                    );
+                  },
+                ),
+              ],
+            ),
           SettingsSection(
             title: 'Chat',
             children: [
@@ -309,8 +330,11 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
           for (final member in _members)
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: AppColors.wave,
-                child: Text(member.username.isEmpty ? '?' : member.username[0].toUpperCase()),
+                backgroundColor: AppColors.mutedOf(context),
+                child: Text(
+                  member.username.isEmpty ? '?' : member.username[0].toUpperCase(),
+                  style: TextStyle(color: AppColors.textOf(context)),
+                ),
               ),
               title: Text(member.username),
               subtitle: Text(member.roleLabel),
@@ -319,8 +343,11 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
           if (_myRole != MemberRole.owner)
             ListTile(
               key: const Key('leave_group'),
-              leading: const Icon(Icons.exit_to_app, color: Color(0xFFB91C1C)),
-              title: const Text('Leave group', style: TextStyle(color: Color(0xFFB91C1C))),
+              leading: Icon(Icons.exit_to_app, color: AppColors.dangerOf(context)),
+              title: Text(
+                'Leave group',
+                style: TextStyle(color: AppColors.dangerOf(context)),
+              ),
               onTap: _leave,
             ),
         ],

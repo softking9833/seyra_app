@@ -8,12 +8,14 @@ import 'package:seyra/features/auth/presentation/pages/register_page.dart';
 import 'package:seyra/features/chat/domain/entities/conversation.dart';
 import 'package:seyra/features/chat/presentation/pages/call_page.dart';
 import 'package:seyra/features/chat/presentation/pages/chat_details_page.dart';
+import 'package:seyra/features/chat/presentation/pages/room_admin_page.dart';
 import 'package:seyra/features/chat/presentation/pages/conversation_page.dart';
 import 'package:seyra/features/chat/presentation/pages/new_conversation_page.dart';
 import 'package:seyra/features/chat/presentation/pages/new_group_page.dart';
 import 'package:seyra/features/chat/presentation/pages/social_pages.dart';
 import 'package:seyra/features/profile/presentation/pages/delete_account_page.dart';
 import 'package:seyra/features/profile/presentation/pages/edit_profile_page.dart';
+import 'package:seyra/features/profile/presentation/pages/settings_detail_pages.dart';
 import 'package:seyra/features/profile/presentation/pages/settings_page.dart';
 
 /// Application routing. Session/auth redirects will be added later.
@@ -129,24 +131,70 @@ abstract final class AppRouter {
           ),
           settings: settings,
         );
+      case AppRoutes.roomAdmin:
+        final conversation = settings.arguments as Conversation;
+        return MaterialPageRoute<void>(
+          builder: (context) => RoomAdminPage(
+            conversation: conversation,
+            currentUserId: AppDependencies.chatRepository.currentUserId,
+            listMembers: AppDependencies.listMembersUseCase,
+            addMembers: AppDependencies.addMembersUseCase,
+            removeMember: AppDependencies.removeMemberUseCase,
+            setMemberRole: AppDependencies.setMemberRoleUseCase,
+            social: AppDependencies.chatSocial,
+          ),
+          settings: settings,
+        );
       case AppRoutes.settings:
         final user = settings.arguments as User;
         return MaterialPageRoute<void>(
           builder: (context) => SettingsPage(
             user: user,
+            watchProfile: AppDependencies.watchProfileUseCase,
             watchPreferences: AppDependencies.watchPreferencesUseCase,
             updatePreferences: AppDependencies.updatePreferencesUseCase,
             getNotificationPreferences:
                 AppDependencies.getNotificationPreferencesUseCase,
             updateNotificationPreferences:
                 AppDependencies.updateNotificationPreferencesUseCase,
+            pushCoordinator: AppDependencies.pushCoordinator,
             onEditProfile: () {
               Navigator.of(context).pushNamed(
                 AppRoutes.editProfile,
                 arguments: user,
               );
             },
+            onUsername: (username) {
+              Navigator.of(context).pushNamed(
+                AppRoutes.username,
+                arguments: username,
+              );
+            },
             onLogout: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (context) {
+                  return AlertDialog(
+                    title: const Text('Log out?'),
+                    content: const Text(
+                      'This device session will be revoked. You will need to sign in again.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Log out'),
+                      ),
+                    ],
+                  );
+                },
+              );
+              if (confirmed != true) {
+                return;
+              }
               await AppDependencies.logoutUseCase();
               if (context.mounted) {
                 Navigator.of(context).pushNamedAndRemoveUntil(
@@ -171,6 +219,18 @@ abstract final class AppRouter {
             onCalls: () {
               Navigator.of(context).pushNamed(AppRoutes.callHistory);
             },
+            onEncryption: () {
+              Navigator.of(context).pushNamed(AppRoutes.encryption);
+            },
+            onSecurity: () {
+              Navigator.of(context).pushNamed(AppRoutes.security);
+            },
+            onAbout: () {
+              Navigator.of(context).pushNamed(AppRoutes.about);
+            },
+            onStorage: () {
+              Navigator.of(context).pushNamed(AppRoutes.storage);
+            },
           ),
           settings: settings,
         );
@@ -190,10 +250,17 @@ abstract final class AppRouter {
       case AppRoutes.editProfile:
         final user = settings.arguments as User;
         return MaterialPageRoute<void>(
-          builder: (_) => EditProfilePage(
+          builder: (context) => EditProfilePage(
             user: user,
             watchProfile: AppDependencies.watchProfileUseCase,
             updateProfile: AppDependencies.updateProfileUseCase,
+            profileRepository: AppDependencies.profileRepository,
+            onUsername: () {
+              Navigator.of(context).pushNamed(
+                AppRoutes.username,
+                arguments: user.username,
+              );
+            },
           ),
           settings: settings,
         );
@@ -224,7 +291,10 @@ abstract final class AppRouter {
         );
       case AppRoutes.callHistory:
         return MaterialPageRoute<void>(
-          builder: (_) => CallHistoryPage(social: AppDependencies.chatSocial),
+          builder: (_) => CallHistoryPage(
+            social: AppDependencies.chatSocial,
+            currentUserId: AppDependencies.chatRepository.currentUserId,
+          ),
           settings: settings,
         );
       case AppRoutes.call:
@@ -236,7 +306,44 @@ abstract final class AppRouter {
             video: args['video'] == true,
             outgoing: args['outgoing'] != false,
             incomingPayload: args['payload'] as Map<String, dynamic>?,
+            peerTitle: args['title'] as String? ?? '',
+            peerId: args['peerId'] as String? ?? '',
+            peerInitials: args['initials'] as String? ?? '',
           ),
+          settings: settings,
+        );
+      case AppRoutes.username:
+        final username = settings.arguments as String? ?? '';
+        return MaterialPageRoute<void>(
+          builder: (_) => UsernamePage(
+            currentUsername: username,
+            changeUsername: AppDependencies.changeUsernameUseCase,
+          ),
+          settings: settings,
+        );
+      case AppRoutes.encryption:
+        return MaterialPageRoute<void>(
+          builder: (_) => const EncryptionInfoPage(),
+          settings: settings,
+        );
+      case AppRoutes.security:
+        return MaterialPageRoute<void>(
+          builder: (context) => SecuritySettingsPage(
+            onSessions: () => Navigator.of(context).pushNamed(AppRoutes.sessions),
+            onPrivacy: () => Navigator.of(context).pushNamed(AppRoutes.privacy),
+            onEncryption: () =>
+                Navigator.of(context).pushNamed(AppRoutes.encryption),
+          ),
+          settings: settings,
+        );
+      case AppRoutes.about:
+        return MaterialPageRoute<void>(
+          builder: (_) => const AboutSeyraPage(),
+          settings: settings,
+        );
+      case AppRoutes.storage:
+        return MaterialPageRoute<void>(
+          builder: (_) => const StorageUsagePage(),
           settings: settings,
         );
       case AppRoutes.home:

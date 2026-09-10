@@ -110,6 +110,8 @@ abstract interface class ChatSocialRepository {
 
   Future<Result<void>> revokeSession(String sessionId);
 
+  Future<Result<void>> revokeOtherSessions();
+
   Future<Result<IceServers>> iceServers();
 
   Future<Result<CallRecord>> startCall({
@@ -125,6 +127,10 @@ abstract interface class ChatSocialRepository {
   });
 
   Future<Result<List<CallRecord>>> listCalls();
+
+  Future<Result<void>> deleteCall(String callId);
+
+  Future<Result<void>> clearCallHistory();
 
   Stream<Map<String, dynamic>> watchCallSignals();
 

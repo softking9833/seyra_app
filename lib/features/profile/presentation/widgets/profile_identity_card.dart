@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:seyra/core/theme/app_colors.dart';
 import 'package:seyra/features/profile/domain/entities/user_profile.dart';
+import 'package:seyra/features/profile/presentation/widgets/user_avatar.dart';
 
 String visibilityLabel(VisibilityPreference value) {
   return switch (value) {
@@ -12,7 +13,6 @@ String visibilityLabel(VisibilityPreference value) {
 
 String appearanceLabel(AppearancePreference value) {
   return switch (value) {
-    AppearancePreference.system => 'System',
     AppearancePreference.light => 'Light',
     AppearancePreference.dark => 'Dark',
   };
@@ -34,9 +34,9 @@ class ProfileIdentityCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.fieldBorder),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           boxShadow: const [
             BoxShadow(
               color: Color(0x0F2F6FED),
@@ -52,10 +52,11 @@ class ProfileIdentityCard extends StatelessWidget {
               Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  CircleAvatar(
+                  UserAvatar(
+                    userId: profile.userId,
+                    initials: profile.displayName,
                     radius: 48,
-                    backgroundColor: AppColors.wave,
-                    backgroundImage: const AssetImage(AppAssets.seyraIcon),
+                    hasAvatar: profile.hasAvatar,
                   ),
                   Container(
                     width: 28,
@@ -63,7 +64,10 @@ class ProfileIdentityCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: AppColors.primary,
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
+                      border: Border.all(
+                        color: AppColors.cardOf(context),
+                        width: 2,
+                      ),
                     ),
                     child: const Icon(
                       Icons.verified,
@@ -98,8 +102,8 @@ class ProfileIdentityCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 '@${profile.username}',
-                style: const TextStyle(
-                  color: AppColors.primary,
+                style: TextStyle(
+                  color: AppColors.accentOf(context),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -125,18 +129,19 @@ class _PremiumBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppColors.isDark(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEF3C7),
+        color: dark ? const Color(0xFF3A2E14) : const Color(0xFFFEF3C7),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Text(
+      child: Text(
         'Premium',
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
-          color: Color(0xFFB45309),
+          color: dark ? const Color(0xFFFBBF24) : const Color(0xFFB45309),
         ),
       ),
     );
@@ -151,15 +156,15 @@ class _FreeBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: AppColors.wave,
+        color: AppColors.avatarFillOf(context),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Text(
+      child: Text(
         'Free',
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
-          color: AppColors.primaryDark,
+          color: AppColors.avatarFgOf(context),
         ),
       ),
     );

@@ -67,6 +67,8 @@ type Store interface {
 	UpdateCallState(ctx context.Context, id, state string, endedAt *time.Time) error
 	GetCall(ctx context.Context, id string) (CallSession, error)
 	ListCalls(ctx context.Context, userID string, limit int) ([]CallSession, error)
+	DeleteCall(ctx context.Context, id string) error
+	DeleteCallsForUser(ctx context.Context, userID string) error
 	InsertBot(ctx context.Context, bot Bot) error
 	GetBotByTokenHash(ctx context.Context, hash string) (Bot, error)
 	GetBotByID(ctx context.Context, id string) (Bot, error)

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"testing"
 	"time"
@@ -288,7 +290,7 @@ func TestChatHTTPAndRealtime(t *testing.T) {
 		if err := conn.ReadJSON(&event); err != nil {
 			t.Fatalf("read event: %v", err)
 		}
-		if event["type"] == "realtime.connected" {
+		if event["type"] == "realtime.connected" || event["type"] == "receipt.updated" {
 			continue
 		}
 		break
@@ -349,8 +351,14 @@ func TestChatHTTPAndRealtime(t *testing.T) {
 	}
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	var secondCreated map[string]any
-	if err := conn.ReadJSON(&secondCreated); err != nil {
-		t.Fatalf("read second created: %v", err)
+	for {
+		if err := conn.ReadJSON(&secondCreated); err != nil {
+			t.Fatalf("read second created: %v", err)
+		}
+		if secondCreated["type"] == "receipt.updated" || secondCreated["type"] == "realtime.connected" {
+			continue
+		}
+		break
 	}
 	if secondCreated["type"] != "message.created" {
 		t.Fatalf("expected second created, got %v", secondCreated)
@@ -595,5 +603,150 @@ func TestNotificationDevicesHTTP(t *testing.T) {
 	}
 	if sender.Count != 1 {
 		t.Fatalf("expected push to lin, got %d", sender.Count)
+	}
+}
+
+func TestProfileUsernamePrivacyAndSessionsHTTP(t *testing.T) {
+	handler := testHandler()
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/register", bytes.NewBufferString(`{"username":"ada","password":"secret"}`))
+	req.Header.Set("User-Agent", "SeyraTest/1.0")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register %d %s", rec.Code, rec.Body.String())
+	}
+	var created map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	access := created["credentials"].(map[string]any)["access_token"].(string)
+
+	req = httptest.NewRequest(http.MethodPatch, "/v1/users/me", bytes.NewBufferString(`{"display_name":"Ada L","bio":"hi"}`))
+	req.Header.Set("Authorization", "Bearer "+access)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch me %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/v1/users/me", bytes.NewBufferString(`{"display_name":"Ada Put","bio":"put"}`))
+	req.Header.Set("Authorization", "Bearer "+access)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put me %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/users/me", nil)
+	req.Header.Set("Authorization", "Bearer "+access)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	var me map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &me)
+	if me["display_name"] != "Ada Put" || me["bio"] != "put" {
+		t.Fatalf("me %+v", me)
+	}
+
+	req = httptest.NewRequest(http.MethodPatch, "/v1/users/me/username", bytes.NewBufferString(`{"username":"ada2"}`))
+	req.Header.Set("Authorization", "Bearer "+access)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("username %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/v1/privacy", bytes.NewBufferString(`{"photo_visible":false,"last_seen_visible":false}`))
+	req.Header.Set("Authorization", "Bearer "+access)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("privacy %d %s", rec.Code, rec.Body.String())
+	}
+	var priv map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &priv)
+	if priv["photo_visible"] != false || priv["last_seen_visible"] != false {
+		t.Fatalf("privacy %+v", priv)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewBufferString(`{"username":"ada2","password":"secret"}`))
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	var second map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &second)
+	secondAccess := second["credentials"].(map[string]any)["access_token"].(string)
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/auth/sessions", nil)
+	req.Header.Set("Authorization", "Bearer "+secondAccess)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	var sessions map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &sessions)
+	list := sessions["sessions"].([]any)
+	if len(list) < 2 {
+		t.Fatalf("expected 2 sessions, got %+v", sessions)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/auth/sessions/others", nil)
+	req.Header.Set("Authorization", "Bearer "+secondAccess)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke others %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/auth/sessions", nil)
+	req.Header.Set("Authorization", "Bearer "+access)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("old session should be revoked, got %d", rec.Code)
+	}
+}
+
+func TestAvatarUploadLargerThanJSONLimit(t *testing.T) {
+	handler := testHandler()
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/register", bytes.NewBufferString(`{"username":"ada","password":"secret"}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register %d %s", rec.Code, rec.Body.String())
+	}
+	var created map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	access := created["credentials"].(map[string]any)["access_token"].(string)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": {`form-data; name="file"; filename="avatar.jpg"`},
+		"Content-Type":        {"image/jpeg"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := make([]byte, 20*1024)
+	payload[0], payload[1], payload[2] = 0xff, 0xd8, 0xff
+	if _, err := part.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/users/me/avatar", &body)
+	req.Header.Set("Authorization", "Bearer "+access)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("avatar %d %s", rec.Code, rec.Body.String())
+	}
+	var me map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil {
+		t.Fatal(err)
+	}
+	if me["has_avatar"] != true {
+		t.Fatalf("expected avatar, got %+v", me)
 	}
 }

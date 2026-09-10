@@ -13,6 +13,8 @@ class SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final muted = Theme.of(context).textTheme.bodyMedium?.color;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Column(
@@ -22,21 +24,21 @@ class SettingsSection extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Text(
               title.toUpperCase(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.6,
-                color: AppColors.textSecondary,
+                color: muted,
               ),
             ),
           ),
           Material(
-            color: Colors.white,
+            color: scheme.surface,
             elevation: 1,
             shadowColor: const Color(0x14000000),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: AppColors.fieldBorder),
+              side: BorderSide(color: scheme.outlineVariant),
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
@@ -44,10 +46,10 @@ class SettingsSection extends StatelessWidget {
                 for (var i = 0; i < children.length; i++) ...[
                   children[i],
                   if (i != children.length - 1)
-                    const Divider(
+                    Divider(
                       height: 1,
                       indent: 56,
-                      color: AppColors.fieldBorder,
+                      color: scheme.outlineVariant,
                     ),
                 ],
               ],
@@ -81,35 +83,36 @@ class SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ListTile(
       onTap: onTap,
       leading: Container(
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: (iconColor ?? AppColors.primary).withValues(alpha: 0.12),
+          color: (iconColor ?? AppColors.accentOf(context)).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: iconColor ?? AppColors.primary, size: 20),
+        child: Icon(icon, color: iconColor ?? AppColors.accentOf(context), size: 20),
       ),
       title: Text(
         title,
         style: TextStyle(
           fontWeight: FontWeight.w600,
-          color: titleColor ?? AppColors.textPrimary,
+          color: titleColor ?? scheme.onSurface,
         ),
       ),
       subtitle: subtitle == null
           ? null
           : Text(
               subtitle!,
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: scheme.onSurfaceVariant),
             ),
       trailing:
           trailing ??
           (onTap == null
               ? null
-              : const Icon(Icons.chevron_right, color: AppColors.textSecondary)),
+              : Icon(Icons.chevron_right, color: scheme.onSurfaceVariant)),
     );
   }
 }

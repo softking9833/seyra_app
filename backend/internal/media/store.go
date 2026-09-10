@@ -21,22 +21,48 @@ var (
 )
 
 var allowedTypes = map[string]struct{}{
-	"image/jpeg":      {},
-	"image/png":       {},
-	"image/webp":      {},
-	"image/gif":       {},
-	"application/pdf": {},
-	"text/plain":      {},
-	"audio/mpeg":      {},
-	"audio/mp4":       {},
-	"video/mp4":              {},
+	"image/jpeg":               {},
+	"image/png":                {},
+	"image/webp":               {},
+	"image/gif":                {},
+	"application/pdf":          {},
+	"text/plain":               {},
+	"audio/mpeg":               {},
+	"audio/mp4":                {},
+	"video/mp4":                {},
 	"application/octet-stream": {},
 }
 
 func AllowedContentType(value string) bool {
 	base, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(value)), ";")
+	if base == "image/jpg" {
+		base = "image/jpeg"
+	}
 	_, ok := allowedTypes[base]
 	return ok
+}
+
+func SniffImageContentType(payload []byte, hinted string) string {
+	base, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(hinted)), ";")
+	if base == "image/jpg" {
+		base = "image/jpeg"
+	}
+	if strings.HasPrefix(base, "image/") && AllowedContentType(base) {
+		return base
+	}
+	if len(payload) >= 3 && payload[0] == 0xff && payload[1] == 0xd8 && payload[2] == 0xff {
+		return "image/jpeg"
+	}
+	if len(payload) >= 8 && bytes.Equal(payload[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) {
+		return "image/png"
+	}
+	if len(payload) >= 12 && string(payload[8:12]) == "WEBP" {
+		return "image/webp"
+	}
+	if len(payload) >= 6 && (string(payload[:6]) == "GIF87a" || string(payload[:6]) == "GIF89a") {
+		return "image/gif"
+	}
+	return base
 }
 
 type Store interface {

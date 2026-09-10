@@ -23,4 +23,8 @@ abstract final class ChatApiEndpoints {
 
   static String reactions(String chatId, String messageId) =>
       '/v1/chats/$chatId/messages/$messageId/reactions';
+
+  static String markRead(String chatId) => '/v1/chats/$chatId/read';
+
+  static String receipts(String chatId) => '/v1/chats/$chatId/receipts';
 }

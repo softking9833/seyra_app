@@ -50,6 +50,7 @@ final class HttpChatDataSource implements ChatDataSource {
   final _callSignals = StreamController<Map<String, dynamic>>.broadcast();
   final Map<String, StreamController<bool>> _typingControllers = {};
   SignalE2eService? _e2e;
+  var _keysPublished = false;
 
   @override
   String get currentUserId => _currentUserId;
@@ -338,7 +339,9 @@ final class HttpChatDataSource implements ChatDataSource {
       try {
         await _ensureE2e();
         try {
-          await publishLocalKeys();
+          if (!_keysPublished) {
+            await publishLocalKeys();
+          }
         } catch (_) {}
         final peerId = conversation!.peerId;
         if (peerId.isNotEmpty) {
@@ -365,7 +368,7 @@ final class HttpChatDataSource implements ChatDataSource {
       e2e: e2e,
     );
     if (replaceId == null) {
-      _appendMessage(pending, countUnread: false);
+      _upsertMessage(pending, countUnread: false);
     } else {
       _replaceMessage(conversationId, localId, pending);
     }
@@ -383,9 +386,10 @@ final class HttpChatDataSource implements ChatDataSource {
       );
       final message = await _hydrateMessage(
         ChatMessageModel.fromJson(_decodeObject(response.body)),
+        outgoingPlaintext: body,
       );
       _removeMessage(conversationId, localId);
-      _appendMessage(message, countUnread: false);
+      _upsertMessage(message, countUnread: false);
       return message;
     } catch (error) {
       _replaceMessage(
@@ -435,6 +439,61 @@ final class HttpChatDataSource implements ChatDataSource {
       return;
     }
     _upsertConversation(conversation.copyWith(unreadCount: 0));
+    try {
+      await _authorized(
+        method: 'POST',
+        path: ChatApiEndpoints.markRead(conversationId),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _pullPeerReceipt(String conversationId) async {
+    final conversation = getConversation(conversationId);
+    if (conversation == null || conversation.kind != ConversationKind.direct) {
+      return;
+    }
+    try {
+      final response = await _authorized(
+        method: 'GET',
+        path: ChatApiEndpoints.receipts(conversationId),
+      );
+      final json = _decodeObject(response.body);
+      if (json['visible'] != true) {
+        return;
+      }
+      final at = DateTime.tryParse(json['last_read_at'] as String? ?? '');
+      if (at != null) {
+        _applyPeerRead(conversationId, at.toUtc());
+      }
+    } catch (_) {}
+  }
+
+  void _applyPeerRead(String conversationId, DateTime lastReadAt) {
+    final items = _messages[conversationId];
+    if (items == null) {
+      return;
+    }
+    var changed = false;
+    for (var i = 0; i < items.length; i++) {
+      final message = items[i];
+      if (message.senderId != _currentUserId) {
+        continue;
+      }
+      if (message.delivery == MessageDelivery.sending ||
+          message.delivery == MessageDelivery.failed) {
+        continue;
+      }
+      if (message.sentAt.toUtc().isAfter(lastReadAt)) {
+        continue;
+      }
+      if (message.delivery != MessageDelivery.read) {
+        items[i] = message.copyWith(delivery: MessageDelivery.read);
+        changed = true;
+      }
+    }
+    if (changed) {
+      _emitMessages(conversationId);
+    }
   }
 
   @override
@@ -472,6 +531,9 @@ final class HttpChatDataSource implements ChatDataSource {
       throw ChatRemoteException(_fromAuth(error.code));
     }
     await _loadConversations();
+    try {
+      await publishLocalKeys();
+    } catch (_) {}
     await _connectRealtime();
   }
 
@@ -517,6 +579,7 @@ final class HttpChatDataSource implements ChatDataSource {
       remote: items,
     );
     _emitMessages(conversationId);
+    unawaited(_pullPeerReceipt(conversationId));
   }
 
   Future<void> _connectRealtime() async {
@@ -526,12 +589,18 @@ final class HttpChatDataSource implements ChatDataSource {
     }
     final wsUrl = _wsUri(baseUrl.resolve(ChatApiEndpoints.realtime));
     await _realtimeSub?.cancel();
-    _realtimeSub = realtime.connect(uri: wsUrl, accessToken: access).listen(
-      _onRealtime,
-      onError: (_) {
-        unawaited(_resyncAfterReconnect());
-      },
-    );
+    _realtimeSub = realtime
+        .connect(
+          uri: wsUrl,
+          accessToken: () =>
+              secureStorage.read(AuthSecureStorageKeys.accessToken),
+        )
+        .listen(
+          _onRealtime,
+          onError: (_) {
+            unawaited(_resyncAfterReconnect());
+          },
+        );
   }
 
   Future<void> _resyncAfterReconnect() async {
@@ -553,13 +622,37 @@ final class HttpChatDataSource implements ChatDataSource {
       unawaited(_resyncAfterReconnect());
       return;
     }
+    if (type == 'realtime.disconnected') {
+      try {
+        await authRemote.refreshSession();
+      } catch (_) {}
+      return;
+    }
     final payload = event['payload'];
     if (payload is! Map<String, dynamic>) {
       return;
     }
     if (type == 'message.created') {
       final message = await _hydrateMessage(ChatMessageModel.fromJson(payload));
-      _appendMessage(message);
+      _upsertMessage(message);
+      if (message.senderId != _currentUserId &&
+          message.conversationId == _activeConversationId) {
+        unawaited(markConversationRead(message.conversationId));
+      }
+    } else if (type == 'receipt.updated') {
+      final conversationId = payload['conversation_id'] as String? ?? '';
+      final userId = payload['user_id'] as String? ?? '';
+      final rawAt = payload['last_read_at'] as String?;
+      if (conversationId.isEmpty ||
+          userId.isEmpty ||
+          userId == _currentUserId ||
+          rawAt == null) {
+        return;
+      }
+      final at = DateTime.tryParse(rawAt);
+      if (at != null) {
+        _applyPeerRead(conversationId, at.toUtc());
+      }
     } else if (type == 'message.updated') {
       unawaited(_loadMessages(payload['conversation_id'] as String? ?? ''));
     } else if (type == 'message.deleted') {
@@ -590,9 +683,16 @@ final class HttpChatDataSource implements ChatDataSource {
     }
   }
 
-  void _appendMessage(ChatMessage message, {bool countUnread = true}) {
+  void _upsertMessage(ChatMessage message, {bool countUnread = true}) {
     final items = _messages.putIfAbsent(message.conversationId, () => []);
-    if (items.any((item) => item.id == message.id)) {
+    final existingIndex = items.indexWhere((item) => item.id == message.id);
+    if (existingIndex >= 0) {
+      final existing = items[existingIndex];
+      if (isE2eDecryptPlaceholder(existing) &&
+          !isE2eDecryptPlaceholder(message)) {
+        items[existingIndex] = message;
+        _emitMessages(message.conversationId);
+      }
       return;
     }
     items.add(message);
@@ -821,16 +921,28 @@ final class HttpChatDataSource implements ChatDataSource {
   Future<ChatMessage> hydrateMessage(ChatMessageModel model) =>
       _hydrateMessage(model);
 
-  Future<ChatMessage> _hydrateMessage(ChatMessageModel model) async {
+  Future<ChatMessage> _hydrateMessage(
+    ChatMessageModel model, {
+    String? outgoingPlaintext,
+  }) async {
     if (!model.e2e || model.body.isEmpty) {
-      return model.toEntity();
+      return model.toEntity(decryptedBody: outgoingPlaintext);
+    }
+    if (outgoingPlaintext != null && outgoingPlaintext.isNotEmpty) {
+      return _entityFromPlain(model, outgoingPlaintext);
+    }
+    final cached = _cachedPlaintext(model);
+    if (cached != null) {
+      return cached;
+    }
+    // Own Signal ciphertext is not decryptable on this device. Keep any
+    // locally known plaintext; otherwise show the placeholder.
+    if (model.senderId == _currentUserId) {
+      return model.toEntity(decryptedBody: e2eDecryptPlaceholder);
     }
     try {
       await _ensureE2e();
-      final conversation = getConversation(model.conversationId);
-      final peerId = model.senderId == _currentUserId
-          ? (conversation?.peerId ?? '')
-          : model.senderId;
+      final peerId = model.senderId;
       if (peerId.isEmpty) {
         return model.toEntity();
       }
@@ -840,8 +952,24 @@ final class HttpChatDataSource implements ChatDataSource {
       );
       return _entityFromPlain(model, plain);
     } catch (_) {
-      return model.toEntity(decryptedBody: 'Encrypted message');
+      return _cachedPlaintext(model) ??
+          model.toEntity(decryptedBody: e2eDecryptPlaceholder);
     }
+  }
+
+  ChatMessage? _cachedPlaintext(ChatMessageModel model) {
+    final items = _messages[model.conversationId];
+    if (items == null) {
+      return null;
+    }
+    for (final item in items) {
+      if (item.id == model.id &&
+          item.e2e &&
+          !isE2eDecryptPlaceholder(item)) {
+        return item;
+      }
+    }
+    return null;
   }
 
   ChatMessage _entityFromPlain(ChatMessageModel model, String plain) {
@@ -901,10 +1029,19 @@ final class HttpChatDataSource implements ChatDataSource {
     await _ensureE2e();
     final bundle = await _e2e!.exportPublicBundle();
     await _authorized(method: 'POST', path: '/v1/e2e/keys', jsonBody: bundle);
+    _keysPublished = true;
   }
 
   Future<void> establishSession(String peerUserId) async {
     await _ensureE2e();
+    if (await _e2e!.hasSession(peerUserId)) {
+      return;
+    }
+    if (!_keysPublished) {
+      try {
+        await publishLocalKeys();
+      } catch (_) {}
+    }
     final response = await _authorized(
       method: 'GET',
       path: '/v1/e2e/bundle/$peerUserId',

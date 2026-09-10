@@ -415,6 +415,55 @@ func (s *Service) ListCalls(ctx context.Context, actorID string) ([]CallSession,
 	return s.store.ListCalls(ctx, actorID, 50)
 }
 
+func (s *Service) CallPeerName(ctx context.Context, actorID, conversationID string) string {
+	conv, err := s.store.GetConversation(ctx, conversationID)
+	if err != nil {
+		return "Unknown"
+	}
+	if conv.Kind == KindDirect {
+		ids, err := s.store.MemberIDs(ctx, conversationID)
+		if err == nil {
+			for _, id := range ids {
+				if id == actorID {
+					continue
+				}
+				ref, lookupErr := s.directory.LookupID(ctx, id)
+				if lookupErr == nil && ref.Username != "" {
+					return ref.Username
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(conv.Title) != "" {
+		return conv.Title
+	}
+	return "Unknown"
+}
+
+func (s *Service) DeleteCall(ctx context.Context, actorID, callID string) error {
+	call, err := s.store.GetCall(ctx, callID)
+	if err != nil {
+		return err
+	}
+	allowed := call.CallerID == actorID
+	if !allowed {
+		for _, id := range call.ParticipantIDs {
+			if id == actorID {
+				allowed = true
+				break
+			}
+		}
+	}
+	if !allowed {
+		return ErrForbidden
+	}
+	return s.store.DeleteCall(ctx, callID)
+}
+
+func (s *Service) ClearCallHistory(ctx context.Context, actorID string) error {
+	return s.store.DeleteCallsForUser(ctx, actorID)
+}
+
 func (s *Service) HandleRealtime(ctx context.Context, actorID string, event Event) error {
 	switch event.Type {
 	case EventTyping:

@@ -8,11 +8,25 @@ abstract interface class ProfileDataSource {
 
   Stream<UserPreferences> watchPreferences();
 
-  UserProfile updateProfile({
+  Future<UserProfile> updateProfile({
     required String userId,
     required String displayName,
     required String bio,
   });
 
-  UserPreferences updatePreferences(UserPreferences preferences);
+  Future<UserProfile> changeUsername(String username);
+
+  Future<UserPreferences> updatePreferences(UserPreferences preferences);
+
+  Future<UserProfile> uploadAvatar({
+    required List<int> bytes,
+    required String filename,
+    required String contentType,
+  });
+
+  Future<UserProfile> removeAvatar();
+
+  Future<List<int>?> fetchAvatar(String userId);
+
+  Future<void> reloadRemote();
 }

@@ -26,9 +26,15 @@ final class AppConfig {
   final String apiBaseUrl;
   final AuthBackendMode authBackendMode;
 
-  /// Android emulator loopback to the host machine. iOS simulator / desktop
-  /// should pass `--dart-define=SEYRA_API_BASE_URL=http://127.0.0.1:8080`.
-  static const defaultDevelopmentBaseUrl = 'http://10.0.2.2:8080';
+  /// LAN host for two-device / two-PC development.
+  /// Override with `--dart-define=SEYRA_API_BASE_URL=http://…`
+  static const defaultDevelopmentBaseUrl = 'http://172.20.1.78:8080';
+
+  /// Flutter web UI for LAN testing.
+  /// `flutter run -d web-server --web-hostname 172.20.1.78 --web-port 5000`
+  static const defaultDevelopmentWebHost = '172.20.1.78';
+  static const defaultDevelopmentWebPort = 5000;
+  static const defaultDevelopmentWebOrigin = 'http://172.20.1.78:5000';
 
   factory AppConfig.fromEnvironment() {
     const envName = String.fromEnvironment(

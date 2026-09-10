@@ -452,6 +452,7 @@ final class HttpChatSocialRepository implements ChatSocialRepository {
         typingVisible: json['typing_visible'] as bool? ?? true,
         profileVisible: json['profile_visible'] as bool? ?? true,
         notificationPreview: json['notification_preview'] as bool? ?? true,
+        photoVisible: json['photo_visible'] as bool? ?? true,
       );
     });
   }
@@ -468,6 +469,7 @@ final class HttpChatSocialRepository implements ChatSocialRepository {
           'typing_visible': settings.typingVisible,
           'profile_visible': settings.profileVisible,
           'notification_preview': settings.notificationPreview,
+          'photo_visible': settings.photoVisible,
         },
       ),
     );
@@ -530,11 +532,17 @@ final class HttpChatSocialRepository implements ChatSocialRepository {
       final out = <AuthDeviceSession>[];
       for (final item in json['sessions'] as List? ?? const []) {
         if (item is Map<String, dynamic>) {
+          if (item['revoked'] == true) {
+            continue;
+          }
           out.add(
             AuthDeviceSession(
               id: item['id'] as String,
               expiresAt: DateTime.parse(item['expires_at'] as String),
-              revoked: item['revoked'] == true,
+              createdAt: DateTime.tryParse(item['created_at'] as String? ?? ''),
+              revoked: false,
+              current: item['current'] == true,
+              userAgent: item['user_agent'] as String? ?? '',
             ),
           );
         }
@@ -547,6 +555,13 @@ final class HttpChatSocialRepository implements ChatSocialRepository {
   Future<Result<void>> revokeSession(String sessionId) {
     return _mapVoid(
       () => _chat.authorized(method: 'DELETE', path: '/v1/auth/sessions/$sessionId'),
+    );
+  }
+
+  @override
+  Future<Result<void>> revokeOtherSessions() {
+    return _mapVoid(
+      () => _chat.authorized(method: 'POST', path: '/v1/auth/sessions/others'),
     );
   }
 
@@ -628,12 +643,28 @@ final class HttpChatSocialRepository implements ChatSocialRepository {
                   ? null
                   : DateTime.parse(item['ended_at'] as String),
               durationSeconds: item['duration_seconds'] as int?,
+              peerName: item['peer_name'] as String? ?? '',
+              outgoing: item['outgoing'] == true,
             ),
           );
         }
       }
       return out;
     });
+  }
+
+  @override
+  Future<Result<void>> deleteCall(String callId) {
+    return _mapVoid(
+      () => _chat.authorized(method: 'DELETE', path: '/v1/calls/$callId'),
+    );
+  }
+
+  @override
+  Future<Result<void>> clearCallHistory() {
+    return _mapVoid(
+      () => _chat.authorized(method: 'DELETE', path: '/v1/calls'),
+    );
   }
 
   @override

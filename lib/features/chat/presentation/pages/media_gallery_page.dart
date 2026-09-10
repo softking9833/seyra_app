@@ -91,7 +91,7 @@ class _MediaGalleryPageState extends State<MediaGalleryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Media')),
-      backgroundColor: AppColors.surfaceMuted,
+      backgroundColor: AppColors.scaffoldOf(context),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

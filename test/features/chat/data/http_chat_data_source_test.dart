@@ -404,6 +404,53 @@ void main() {
     await sub.cancel();
   });
 
+  test('peer receipt.updated marks own messages as read', () async {
+    final api = _FakeApiClient()
+      ..responses.add(
+        const ApiResponse(
+          statusCode: 200,
+          body:
+              '{"chats":[{"id":"cht_1","peer":{"id":"usr_lin","username":"lin"},"last_message_preview":"Hi","last_message_at":"2026-09-08T00:00:00.000Z","unread_count":0}]}',
+        ),
+      )
+      ..responses.add(
+        const ApiResponse(
+          statusCode: 200,
+          body:
+              '{"messages":[{"id":"msg_1","conversation_id":"cht_1","sender_id":"usr_ada","body":"hi","created_at":"2026-09-08T00:00:00.000Z"}]}',
+        ),
+      );
+    final realtime = _ControllableRealtime();
+    final storage = MemorySecureStorage();
+    await storage.write(key: AuthSecureStorageKeys.accessToken, value: 'token');
+    final source = HttpChatDataSource(
+      apiClient: api,
+      secureStorage: storage,
+      authRemote: _FakeAuthRemote(),
+      baseUrl: Uri.parse('http://127.0.0.1:8080'),
+      realtime: realtime,
+    );
+    final repository = ChatRepositoryImpl(dataSource: source);
+    await repository.watchConversations().first;
+    final seen = <List<ChatMessage>>[];
+    final sub = repository.watchMessages('cht_1').listen(seen.add);
+    for (var i = 0; i < 20 && seen.isEmpty; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(seen.last.single.delivery, MessageDelivery.sent);
+    realtime.emit({
+      'type': 'receipt.updated',
+      'payload': {
+        'conversation_id': 'cht_1',
+        'user_id': 'usr_lin',
+        'last_read_at': '2026-09-08T00:00:01.000Z',
+      },
+    });
+    await Future<void>.delayed(Duration.zero);
+    expect(seen.last.single.delivery, MessageDelivery.read);
+    await sub.cancel();
+  });
+
   test('maps missing username to ChatUserNotFoundFailure', () async {
     final api = _FakeApiClient()
       ..responses.add(
@@ -446,7 +493,15 @@ final class _FakeApiClient implements ApiClient {
     Map<String, String>? headers,
     Object? jsonBody,
   }) async {
-    if (uri.path.contains('/v1/e2e/')) {
+    if (uri.path.contains('/v1/e2e/') ||
+        uri.path.endsWith('/read') ||
+        uri.path.endsWith('/receipts')) {
+      if (uri.path.endsWith('/receipts')) {
+        return const ApiResponse(
+          statusCode: 200,
+          body: '{"visible":false}',
+        );
+      }
       return const ApiResponse(statusCode: 204, body: '{}');
     }
     if (responses.isEmpty) {
@@ -464,7 +519,7 @@ final class _ControllableRealtime implements ChatRealtimePort {
   @override
   Stream<Map<String, dynamic>> connect({
     required Uri uri,
-    required String accessToken,
+    required Future<String?> Function() accessToken,
   }) {
     return _controller.stream;
   }
@@ -480,7 +535,7 @@ final class _FakeRealtime implements ChatRealtimePort {
   @override
   Stream<Map<String, dynamic>> connect({
     required Uri uri,
-    required String accessToken,
+    required Future<String?> Function() accessToken,
   }) {
     return const Stream.empty();
   }

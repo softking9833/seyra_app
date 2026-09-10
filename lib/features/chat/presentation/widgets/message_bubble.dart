@@ -11,13 +11,17 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     required this.currentUserId,
     required this.onLongPress,
+    this.onTap,
+    this.selected = false,
     this.onRetry,
     this.onOpenAttachment,
   });
 
   final ChatMessage message;
   final String currentUserId;
-  final VoidCallback onLongPress;
+  final ValueChanged<Offset> onLongPress;
+  final VoidCallback? onTap;
+  final bool selected;
   final VoidCallback? onRetry;
   final VoidCallback? onOpenAttachment;
 
@@ -33,7 +37,8 @@ class MessageBubble extends StatelessWidget {
           bottom: 8,
         ),
         child: GestureDetector(
-          onLongPress: onLongPress,
+          onTap: onTap,
+          onLongPressStart: (details) => onLongPress(details.globalPosition),
           child: Column(
             crossAxisAlignment: mine
                 ? CrossAxisAlignment.end
@@ -42,20 +47,32 @@ class MessageBubble extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                 decoration: BoxDecoration(
-                  color: mine ? AppColors.primary : Colors.white,
+                  color: mine
+                      ? AppColors.accentOf(context)
+                      : (AppColors.isDark(context)
+                          ? AppColors.darkReceivedBubble
+                          : Colors.white),
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(18),
                     topRight: const Radius.circular(18),
                     bottomLeft: Radius.circular(mine ? 18 : 4),
                     bottomRight: Radius.circular(mine ? 4 : 18),
                   ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
+                  boxShadow: selected
+                      ? const [
+                          BoxShadow(
+                            color: Color(0xAA5D5FEF),
+                            blurRadius: 18,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : const [
+                          BoxShadow(
+                            color: Color(0x14000000),
+                            blurRadius: 8,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,11 +88,11 @@ class MessageBubble extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: mine
                               ? Colors.white.withValues(alpha: 0.16)
-                              : AppColors.surfaceMuted,
+                              : AppColors.mutedOf(context),
                           borderRadius: BorderRadius.circular(8),
                           border: Border(
                             left: BorderSide(
-                              color: mine ? Colors.white : AppColors.primary,
+                              color: mine ? Colors.white : AppColors.accentOf(context),
                               width: 3,
                             ),
                           ),
@@ -85,7 +102,9 @@ class MessageBubble extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: mine ? Colors.white : AppColors.textPrimary,
+                            color: mine
+                                ? Colors.white
+                                : AppColors.textOf(context),
                             fontSize: 12,
                           ),
                         ),
@@ -94,7 +113,7 @@ class MessageBubble extends StatelessWidget {
                     Text(
                       _displayBody(message),
                       style: TextStyle(
-                        color: mine ? Colors.white : AppColors.textPrimary,
+                        color: mine ? Colors.white : AppColors.textOf(context),
                         fontSize: 15,
                         height: 1.35,
                       ),
@@ -112,13 +131,13 @@ class MessageBubble extends StatelessWidget {
                                   ? Icons.lock_outline
                                   : Icons.attach_file,
                               size: 16,
-                              color: mine ? Colors.white : AppColors.primary,
+                              color: mine ? Colors.white : AppColors.accentOf(context),
                             ),
                             const SizedBox(width: 6),
                             Text(
                               message.e2e ? 'Encrypted file' : 'Attachment',
                               style: TextStyle(
-                                color: mine ? Colors.white : AppColors.primary,
+                                color: mine ? Colors.white : AppColors.accentOf(context),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -136,7 +155,7 @@ class MessageBubble extends StatelessWidget {
                           style: TextStyle(
                             color: mine
                                 ? Colors.white.withValues(alpha: 0.8)
-                                : AppColors.textSecondary,
+                                : AppColors.hintOf(context),
                             fontSize: 11,
                           ),
                         ),
@@ -147,6 +166,8 @@ class MessageBubble extends StatelessWidget {
                             size: 14,
                             color: message.delivery == MessageDelivery.failed
                                 ? const Color(0xFFFFCDD2)
+                                : message.delivery == MessageDelivery.read
+                                ? const Color(0xFF90CAF9)
                                 : Colors.white.withValues(alpha: 0.85),
                           ),
                         ],
@@ -177,10 +198,12 @@ class MessageBubble extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: reaction.reactedByMe
-                                ? AppColors.wave
-                                : Colors.white,
+                                ? (AppColors.isDark(context)
+                                    ? AppColors.darkAccent.withValues(alpha: 0.35)
+                                    : AppColors.wave)
+                                : AppColors.cardOf(context),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.fieldBorder),
+                            border: Border.all(color: AppColors.borderOf(context)),
                           ),
                           child: Text(
                             '${reaction.emoji} ${reaction.count}',
@@ -236,14 +259,16 @@ class DateSeparatorChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.86),
+            color: AppColors.isDark(context)
+                ? AppColors.darkSurface
+                : Colors.white.withValues(alpha: 0.86),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary,
+              color: AppColors.hintOf(context),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -339,8 +364,8 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
       child: Container(
         width: 7,
         height: 7,
-        decoration: const BoxDecoration(
-          color: AppColors.textSecondary,
+        decoration: BoxDecoration(
+          color: AppColors.hintOf(context),
           shape: BoxShape.circle,
         ),
       ),

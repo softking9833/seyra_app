@@ -1,1 +1,1 @@
-C:/Program Files/PostgreSQL/18/bin/postgres.exe "-D" "D:/projects/seyra/backend/.pgdata" "-p" "5433"
+C:/Program Files/PostgreSQL/18/bin/postgres.exe "-D" "D:/projects/seyra/backend/.pgdata"

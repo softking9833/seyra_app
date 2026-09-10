@@ -9,6 +9,7 @@ class PrivacySettings {
     this.typingVisible = true,
     this.profileVisible = true,
     this.notificationPreview = true,
+    this.photoVisible = true,
   });
 
   final bool lastSeenVisible;
@@ -16,6 +17,7 @@ class PrivacySettings {
   final bool typingVisible;
   final bool profileVisible;
   final bool notificationPreview;
+  final bool photoVisible;
 
   PrivacySettings copyWith({
     bool? lastSeenVisible,
@@ -23,6 +25,7 @@ class PrivacySettings {
     bool? typingVisible,
     bool? profileVisible,
     bool? notificationPreview,
+    bool? photoVisible,
   }) {
     return PrivacySettings(
       lastSeenVisible: lastSeenVisible ?? this.lastSeenVisible,
@@ -30,6 +33,7 @@ class PrivacySettings {
       typingVisible: typingVisible ?? this.typingVisible,
       profileVisible: profileVisible ?? this.profileVisible,
       notificationPreview: notificationPreview ?? this.notificationPreview,
+      photoVisible: photoVisible ?? this.photoVisible,
     );
   }
 }
@@ -38,12 +42,18 @@ class AuthDeviceSession {
   const AuthDeviceSession({
     required this.id,
     required this.expiresAt,
+    this.createdAt,
     this.revoked = false,
+    this.current = false,
+    this.userAgent = '',
   });
 
   final String id;
   final DateTime expiresAt;
+  final DateTime? createdAt;
   final bool revoked;
+  final bool current;
+  final String userAgent;
 }
 
 class CallRecord {
@@ -56,6 +66,8 @@ class CallRecord {
     required this.createdAt,
     this.endedAt,
     this.durationSeconds,
+    this.peerName = '',
+    this.outgoing = false,
   });
 
   final String id;
@@ -66,6 +78,8 @@ class CallRecord {
   final DateTime createdAt;
   final DateTime? endedAt;
   final int? durationSeconds;
+  final String peerName;
+  final bool outgoing;
 }
 
 class BotAccount {

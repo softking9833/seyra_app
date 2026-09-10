@@ -112,7 +112,7 @@ class _NewConversationPageState extends State<NewConversationPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surfaceMuted,
+      backgroundColor: AppColors.scaffoldOf(context),
       appBar: AppBar(title: const Text('New chat')),
       body: Column(
         children: [
@@ -125,15 +125,9 @@ class _NewConversationPageState extends State<NewConversationPage> {
               autofocus: true,
               textInputAction: TextInputAction.search,
               onChanged: _onQueryChanged,
-              decoration: InputDecoration(
-                hintText: 'Search username',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: AppColors.fieldBorder),
-                ),
+              decoration: AppColors.searchField(
+                context,
+                hint: 'Search username',
               ),
             ),
           ),
@@ -143,7 +137,7 @@ class _NewConversationPageState extends State<NewConversationPage> {
               child: Text(
                 _error!,
                 key: const Key('new_chat_error_message'),
-                style: const TextStyle(color: Color(0xFFB91C1C)),
+                style: TextStyle(color: AppColors.dangerOf(context)),
               ),
             ),
           Expanded(child: _body()),
@@ -185,11 +179,11 @@ class _NewConversationPageState extends State<NewConversationPage> {
         return ListTile(
           key: Key('new_chat_result_${user.username}'),
           leading: CircleAvatar(
-            backgroundColor: AppColors.wave,
+            backgroundColor: AppColors.avatarFillOf(context),
             child: Text(
               chatInitials(user.username),
-              style: const TextStyle(
-                color: AppColors.primaryDark,
+              style: TextStyle(
+                color: AppColors.avatarFgOf(context),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -223,7 +217,7 @@ class _SearchHint extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 48, color: AppColors.textSecondary),
+            Icon(icon, size: 48, color: AppColors.hintOf(context)),
             const SizedBox(height: 12),
             Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 6),

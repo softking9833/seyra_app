@@ -328,6 +328,88 @@ func (s *Service) clearLoginFailures(username string) {
 	delete(s.logins, username)
 }
 
+func (s *Service) UserByID(ctx context.Context, id string) (User, error) {
+	return s.store.GetUserByID(ctx, id)
+}
+
+func (s *Service) AnnotateSession(ctx context.Context, accessToken, userAgent string) {
+	session, err := s.sessionByAccess(ctx, accessToken)
+	if err != nil {
+		return
+	}
+	agent := strings.TrimSpace(userAgent)
+	if utf8.RuneCountInString(agent) > 180 {
+		agent = string([]rune(agent)[:180])
+	}
+	_ = s.store.SetSessionUserAgent(ctx, session.ID, agent)
+}
+
+func (s *Service) UpdateProfile(ctx context.Context, accessToken, displayName, bio string) (User, error) {
+	user, _, err := s.CurrentSession(ctx, accessToken)
+	if err != nil {
+		return User{}, err
+	}
+	name := strings.TrimSpace(displayName)
+	if utf8.RuneCountInString(name) > 80 {
+		return User{}, ErrInvalidInput
+	}
+	about := strings.TrimSpace(bio)
+	if utf8.RuneCountInString(about) > 300 {
+		return User{}, ErrInvalidInput
+	}
+	if err := s.store.UpdateUserProfile(ctx, user.ID, name, about); err != nil {
+		return User{}, err
+	}
+	return s.store.GetUserByID(ctx, user.ID)
+}
+
+func (s *Service) ChangeUsername(ctx context.Context, accessToken, username string) (User, error) {
+	user, _, err := s.CurrentSession(ctx, accessToken)
+	if err != nil {
+		return User{}, err
+	}
+	normalized, err := NormalizeUsername(username)
+	if err != nil {
+		return User{}, err
+	}
+	if err := s.store.UpdateUsername(ctx, user.ID, normalized); err != nil {
+		return User{}, err
+	}
+	return s.store.GetUserByID(ctx, user.ID)
+}
+
+func (s *Service) SetAvatarKey(ctx context.Context, accessToken, key string) (User, error) {
+	user, _, err := s.CurrentSession(ctx, accessToken)
+	if err != nil {
+		return User{}, err
+	}
+	if err := s.store.SetAvatarKey(ctx, user.ID, key); err != nil {
+		return User{}, err
+	}
+	return s.store.GetUserByID(ctx, user.ID)
+}
+
+func (s *Service) RevokeOtherSessions(ctx context.Context, accessToken string) error {
+	user, session, err := s.CurrentSession(ctx, accessToken)
+	if err != nil {
+		return err
+	}
+	all, err := s.store.ListSessions(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+	now := s.now().UTC()
+	for _, item := range all {
+		if item.ID == session.ID || item.RevokedAt != nil {
+			continue
+		}
+		if err := s.store.RevokeSession(ctx, item.ID, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) CreateBotUser(ctx context.Context, username string) (User, error) {
 	normalized, err := NormalizeUsername(username)
 	if err != nil {

@@ -16,7 +16,7 @@ const seedPassword = "seyra123"
 func main() {
 	base := os.Getenv("SEYRA_API_BASE_URL")
 	if base == "" {
-		base = "http://127.0.0.1:8080"
+		base = "http://172.20.1.78:8080"
 	}
 	client := &http.Client{Timeout: 15 * time.Second}
 

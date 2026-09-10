@@ -144,6 +144,60 @@ func (s *MemoryStore) DeleteUserAndSessions(_ context.Context, userID string) er
 	return nil
 }
 
+func (s *MemoryStore) SetSessionUserAgent(_ context.Context, sessionID, userAgent string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.sessions[sessionID]
+	if !ok {
+		return ErrNotFound
+	}
+	session.UserAgent = userAgent
+	s.sessions[sessionID] = session
+	return nil
+}
+
+func (s *MemoryStore) UpdateUserProfile(_ context.Context, userID, displayName, bio string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	user.DisplayName = displayName
+	user.Bio = bio
+	s.users[userID] = user
+	return nil
+}
+
+func (s *MemoryStore) UpdateUsername(_ context.Context, userID, username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	for _, existing := range s.users {
+		if existing.ID != userID && strings.EqualFold(existing.Username, username) {
+			return ErrUsernameTaken
+		}
+	}
+	user.Username = username
+	s.users[userID] = user
+	return nil
+}
+
+func (s *MemoryStore) SetAvatarKey(_ context.Context, userID, avatarKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	user.AvatarKey = avatarKey
+	s.users[userID] = user
+	return nil
+}
+
 func (s *MemoryStore) ListSessions(_ context.Context, userID string) ([]Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

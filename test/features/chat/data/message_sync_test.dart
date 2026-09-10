@@ -47,4 +47,27 @@ void main() {
     final merged = mergeMessagesById(local: [failed], remote: [remote]);
     expect(merged.map((item) => item.id), ['msg_1', 'pending_1']);
   });
+
+  test('does not replace a successful local decrypt with the e2e placeholder', () {
+    final local = ChatMessage(
+      id: 'msg_1',
+      conversationId: 'c1',
+      senderId: 'usr_lin',
+      body: 'hi',
+      sentAt: DateTime.utc(2026, 9, 8, 1),
+      delivery: MessageDelivery.sent,
+      e2e: true,
+    );
+    final remote = ChatMessage(
+      id: 'msg_1',
+      conversationId: 'c1',
+      senderId: 'usr_lin',
+      body: e2eDecryptPlaceholder,
+      sentAt: DateTime.utc(2026, 9, 8, 1),
+      delivery: MessageDelivery.sent,
+      e2e: true,
+    );
+    final merged = mergeMessagesById(local: [local], remote: [remote]);
+    expect(merged.single.body, 'hi');
+  });
 }

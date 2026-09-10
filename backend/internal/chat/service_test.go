@@ -329,7 +329,7 @@ func TestBotGrantsForwardBundleAndE2EEdit(t *testing.T) {
 	if gotEvt.Type != EventTyping {
 		t.Fatalf("typing event %s", gotEvt.Type)
 	}
-	if err := svc.PutPrivacy(ctx, lin.ID, PrivacySettings{UserID: lin.ID, LastSeenVisible: false, ReadReceipts: true, TypingVisible: true, ProfileVisible: true, NotificationPreview: true}); err != nil {
+	if err := svc.PutPrivacy(ctx, lin.ID, PrivacySettings{UserID: lin.ID, LastSeenVisible: false, ReadReceipts: true, TypingVisible: true, ProfileVisible: true, NotificationPreview: true, PhotoVisible: true}); err != nil {
 		t.Fatal(err)
 	}
 	_ = svc.TouchPresence(ctx, lin.ID)

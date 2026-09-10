@@ -30,7 +30,7 @@ class MessageComposer extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Material(
-      color: Colors.white,
+      color: AppColors.scaffoldOf(context),
       elevation: 8,
       shadowColor: const Color(0x1A000000),
       child: Padding(
@@ -43,15 +43,15 @@ class MessageComposer extends StatelessWidget {
                 margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceMuted,
+                  color: AppColors.mutedOf(context),
                   borderRadius: BorderRadius.circular(12),
-                  border: const Border(
-                    left: BorderSide(color: AppColors.primary, width: 3),
+                  border: Border(
+                    left: BorderSide(color: AppColors.accentOf(context), width: 3),
                   ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.reply, size: 18, color: AppColors.primary),
+                    Icon(Icons.reply, size: 18, color: AppColors.accentOf(context)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -81,9 +81,9 @@ class MessageComposer extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceMuted,
+                      color: AppColors.mutedOf(context),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.fieldBorder),
+                      border: Border.all(color: AppColors.borderOf(context)),
                     ),
                     child: Row(
                       children: [
@@ -126,7 +126,7 @@ class MessageComposer extends StatelessWidget {
                           tooltip: 'Send',
                           onPressed: onSend,
                           style: IconButton.styleFrom(
-                            backgroundColor: AppColors.primary,
+                            backgroundColor: AppColors.accentOf(context),
                             foregroundColor: Colors.white,
                           ),
                           icon: const Icon(Icons.send_rounded),

@@ -33,7 +33,7 @@ class SeyraAuthHeader extends StatelessWidget {
             AppConstants.appName,
             textAlign: TextAlign.center,
             style: theme.textTheme.headlineMedium?.copyWith(
-              color: AppColors.navy,
+              color: AppColors.isDark(context) ? Colors.white : AppColors.navy,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.6,
             ),
@@ -44,7 +44,7 @@ class SeyraAuthHeader extends StatelessWidget {
           subtitle,
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: const Color(0xFF7A90A8),
+            color: AppColors.hintOf(context),
             fontSize: 15,
           ),
         ),

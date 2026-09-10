@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -17,13 +19,17 @@ var realtimeUpgrader = websocket.Upgrader{
 }
 
 func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
-	user, _, err := s.auth.CurrentSession(r.Context(), bearerToken(r))
+	token := realtimeAccessToken(r)
+	user, _, err := s.auth.CurrentSession(r.Context(), token)
 	if err != nil {
 		writeAuthError(w, err)
 		return
 	}
-	token := bearerToken(r)
-	conn, err := realtimeUpgrader.Upgrade(w, r, nil)
+	upgradeHeader := http.Header{}
+	if proto := selectedSeyraProtocol(r); proto != "" {
+		upgradeHeader.Set("Sec-WebSocket-Protocol", proto)
+	}
+	conn, err := realtimeUpgrader.Upgrade(w, r, upgradeHeader)
 	if err != nil {
 		log.Printf("realtime upgrade failed")
 		return
@@ -88,4 +94,35 @@ func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+const seyraWSProtocolPrefix = "seyra."
+
+func realtimeAccessToken(r *http.Request) string {
+	if token := bearerToken(r); token != "" {
+		return token
+	}
+	return tokenFromWebsocketProtocol(r)
+}
+
+func selectedSeyraProtocol(r *http.Request) string {
+	for _, proto := range strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",") {
+		proto = strings.TrimSpace(proto)
+		if strings.HasPrefix(proto, seyraWSProtocolPrefix) {
+			return proto
+		}
+	}
+	return ""
+}
+
+func tokenFromWebsocketProtocol(r *http.Request) string {
+	proto := selectedSeyraProtocol(r)
+	if proto == "" {
+		return ""
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(proto, seyraWSProtocolPrefix))
+	if err != nil || len(raw) == 0 {
+		return ""
+	}
+	return string(raw)
 }

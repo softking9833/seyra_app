@@ -30,6 +30,12 @@ func (s *Server) currentUser(w http.ResponseWriter, r *http.Request) (string, bo
 }
 
 func (s *Server) listAuthSessions(w http.ResponseWriter, r *http.Request) {
+	s.auth.AnnotateSession(r.Context(), bearerToken(r), r.UserAgent())
+	_, current, err := s.auth.CurrentSession(r.Context(), bearerToken(r))
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
 	sessions, err := s.auth.ListSessions(r.Context(), bearerToken(r))
 	if err != nil {
 		writeAuthError(w, err)
@@ -37,13 +43,15 @@ func (s *Server) listAuthSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(sessions))
 	for _, sess := range sessions {
+		if sess.RevokedAt != nil {
+			continue
+		}
 		item := map[string]any{
 			"id":         sess.ID,
-			"expires_at": sess.ExpiresAt.UTC().Format(time.RFC3339Nano),
-			"created_at": sess.CreatedAt.UTC().Format(time.RFC3339Nano),
-		}
-		if sess.RevokedAt != nil {
-			item["revoked"] = true
+			"expires_at": sess.ExpiresAt.UTC().Format(time.RFC3339),
+			"created_at": sess.CreatedAt.UTC().Format(time.RFC3339),
+			"current":    sess.ID == current.ID,
+			"user_agent": sess.UserAgent,
 		}
 		out = append(out, item)
 	}
@@ -82,6 +90,7 @@ func (s *Server) putPrivacy(w http.ResponseWriter, r *http.Request) {
 		TypingVisible       *bool `json:"typing_visible"`
 		ProfileVisible      *bool `json:"profile_visible"`
 		NotificationPreview *bool `json:"notification_preview"`
+		PhotoVisible        *bool `json:"photo_visible"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -106,6 +115,9 @@ func (s *Server) putPrivacy(w http.ResponseWriter, r *http.Request) {
 	if req.NotificationPreview != nil {
 		current.NotificationPreview = *req.NotificationPreview
 	}
+	if req.PhotoVisible != nil {
+		current.PhotoVisible = *req.PhotoVisible
+	}
 	if err := s.chat.PutPrivacy(r.Context(), actorID, current); err != nil {
 		writeAuthError(w, err)
 		return
@@ -120,6 +132,7 @@ func privacyJSON(settings chat.PrivacySettings) map[string]any {
 		"typing_visible":       settings.TypingVisible,
 		"profile_visible":      settings.ProfileVisible,
 		"notification_preview": settings.NotificationPreview,
+		"photo_visible":        settings.PhotoVisible,
 	}
 }
 
@@ -590,6 +603,8 @@ func (s *Server) listCalls(w http.ResponseWriter, r *http.Request) {
 			"kind":            call.Kind,
 			"state":           call.State,
 			"created_at":      call.CreatedAt.UTC().Format(time.RFC3339Nano),
+			"peer_name":       s.chat.CallPeerName(r.Context(), actorID, call.ConversationID),
+			"outgoing":        call.CallerID == actorID,
 		}
 		if call.EndedAt != nil {
 			item["ended_at"] = call.EndedAt.UTC().Format(time.RFC3339Nano)
@@ -598,6 +613,30 @@ func (s *Server) listCalls(w http.ResponseWriter, r *http.Request) {
 		out = append(out, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"calls": out})
+}
+
+func (s *Server) deleteCall(w http.ResponseWriter, r *http.Request) {
+	actorID, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if err := s.chat.DeleteCall(r.Context(), actorID, r.PathValue("call_id")); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) clearCalls(w http.ResponseWriter, r *http.Request) {
+	actorID, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if err := s.chat.ClearCallHistory(r.Context(), actorID); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) createBot(w http.ResponseWriter, r *http.Request) {

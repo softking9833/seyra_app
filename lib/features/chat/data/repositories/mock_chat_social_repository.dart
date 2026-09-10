@@ -12,6 +12,7 @@ final class MockChatSocialRepository implements ChatSocialRepository {
   final _calls = StreamController<Map<String, dynamic>>.broadcast();
   final _drafts = <String, String>{};
   PrivacySettings _privacy = const PrivacySettings();
+  final _history = <CallRecord>[];
 
   @override
   Future<Result<GlobalSearchResult>> searchGlobal(String query) async {
@@ -216,6 +217,11 @@ final class MockChatSocialRepository implements ChatSocialRepository {
   }
 
   @override
+  Future<Result<void>> revokeOtherSessions() async {
+    return const Success(null);
+  }
+
+  @override
   Future<Result<IceServers>> iceServers() async {
     return const Success(
       IceServers(
@@ -234,16 +240,18 @@ final class MockChatSocialRepository implements ChatSocialRepository {
     required String kind,
     Map<String, dynamic>? payload,
   }) async {
-    return Success(
-      CallRecord(
-        id: 'call_mock',
+    final record = CallRecord(
+        id: 'call_mock_${_history.length}',
         conversationId: conversationId,
         callerId: 'local-user',
         kind: kind,
         state: 'ringing',
         createdAt: DateTime.now(),
-      ),
-    );
+        peerName: 'lin',
+        outgoing: true,
+      );
+    _history.insert(0, record);
+    return Success(record);
   }
 
   @override
@@ -257,7 +265,19 @@ final class MockChatSocialRepository implements ChatSocialRepository {
 
   @override
   Future<Result<List<CallRecord>>> listCalls() async {
-    return const Success([]);
+    return Success(List<CallRecord>.from(_history));
+  }
+
+  @override
+  Future<Result<void>> deleteCall(String callId) async {
+    _history.removeWhere((item) => item.id == callId);
+    return const Success(null);
+  }
+
+  @override
+  Future<Result<void>> clearCallHistory() async {
+    _history.clear();
+    return const Success(null);
   }
 
   @override

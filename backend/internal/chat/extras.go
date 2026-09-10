@@ -119,6 +119,36 @@ func (s *Service) OpenAttachment(ctx context.Context, actorID, attachmentID stri
 	return att, body, size, nil
 }
 
+func AvatarKey(userID string) string {
+	safe := strings.ReplaceAll(userID, "_", "")
+	return media.KeyFor("ava"+safe, "jpg")
+}
+
+func (s *Service) PutAvatarBytes(ctx context.Context, userID, contentType string, r io.Reader, size int64) (string, error) {
+	if !strings.HasPrefix(contentType, "image/") || !media.AllowedContentType(contentType) {
+		return "", media.ErrInvalidType
+	}
+	if size <= 0 || size > media.MaxBytes {
+		return "", media.ErrTooLarge
+	}
+	key := AvatarKey(userID)
+	if err := s.blobs.Put(ctx, key, contentType, r, size); err != nil {
+		return "", err
+	}
+	return key, nil
+}
+
+func (s *Service) OpenAvatarBytes(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	return s.blobs.Open(ctx, key)
+}
+
+func (s *Service) DeleteAvatarBytes(ctx context.Context, key string) error {
+	if key == "" {
+		return nil
+	}
+	return s.blobs.Delete(ctx, key)
+}
+
 func (s *Service) DeleteAttachment(ctx context.Context, actorID, attachmentID string) error {
 	att, err := s.store.GetAttachment(ctx, attachmentID)
 	if err != nil {

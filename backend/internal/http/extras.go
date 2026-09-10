@@ -268,3 +268,15 @@ func (s *Server) chatReceipts(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
+
+func (s *Server) markChatRead(w http.ResponseWriter, r *http.Request) {
+	actorID, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if err := s.chat.MarkConversationRead(r.Context(), actorID, r.PathValue("chat_id")); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

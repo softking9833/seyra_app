@@ -169,8 +169,37 @@ func (s *Service) ListMessages(ctx context.Context, actorID, conversationID, bef
 	if err != nil {
 		return nil, err
 	}
-	_ = s.store.MarkRead(ctx, conversationID, actorID, s.now().UTC())
+	s.markReadAndNotify(ctx, conversationID, actorID)
 	return messages, nil
+}
+
+func (s *Service) MarkConversationRead(ctx context.Context, actorID, conversationID string) error {
+	if err := s.requireMember(ctx, conversationID, actorID); err != nil {
+		return err
+	}
+	s.markReadAndNotify(ctx, conversationID, actorID)
+	return nil
+}
+
+func (s *Service) markReadAndNotify(ctx context.Context, conversationID, actorID string) {
+	now := s.now().UTC()
+	_ = s.store.MarkRead(ctx, conversationID, actorID, now)
+	priv, err := s.store.GetPrivacy(ctx, actorID)
+	if err != nil || !priv.ReadReceipts {
+		return
+	}
+	conv, err := s.store.GetConversation(ctx, conversationID)
+	if err != nil || conv.Kind != KindDirect {
+		return
+	}
+	s.publishMembers(ctx, conversationID, Event{
+		Type: EventReceiptUpdated,
+		Payload: map[string]any{
+			"conversation_id": conversationID,
+			"user_id":         actorID,
+			"last_read_at":    now.Format(time.RFC3339Nano),
+		},
+	})
 }
 
 func (s *Service) SendMessage(ctx context.Context, actorID, conversationID, body, replyToID, attachmentID string, e2e bool) (Message, error) {

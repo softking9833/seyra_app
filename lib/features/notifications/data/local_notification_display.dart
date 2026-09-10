@@ -53,20 +53,26 @@ final class LocalNotificationDisplay implements NotificationDisplay {
         ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
+  bool playSound = true;
+
   @override
   Future<void> show(IncomingAlert alert) async {
-    const android = AndroidNotificationDetails(
+    final android = AndroidNotificationDetails(
       'seyra_messages',
       'Messages',
       channelDescription: 'New Seyra messages',
       importance: Importance.high,
       priority: Priority.high,
+      playSound: playSound,
     );
     await _plugin.show(
       alert.messageId.hashCode,
       alert.title,
       alert.body,
-      const NotificationDetails(android: android, iOS: DarwinNotificationDetails()),
+      NotificationDetails(
+        android: android,
+        iOS: DarwinNotificationDetails(presentSound: playSound),
+      ),
       payload: alert.conversationId,
     );
   }

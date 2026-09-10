@@ -4,30 +4,69 @@ import 'package:seyra/core/theme/app_colors.dart';
 abstract final class AppTheme {
   static const _radius = 12.0;
 
-  static ThemeData get light {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      brightness: Brightness.light,
-      primary: AppColors.primary,
-      surface: AppColors.surface,
-    );
+  static ThemeData get light => _build(
+        brightness: Brightness.light,
+        colorScheme: const ColorScheme.light(
+          primary: AppColors.primary,
+          onPrimary: Colors.white,
+          secondary: AppColors.primary,
+          onSecondary: Colors.white,
+          surface: AppColors.surface,
+          onSurface: AppColors.textPrimary,
+          onSurfaceVariant: AppColors.textSecondary,
+          outlineVariant: AppColors.fieldBorder,
+        ),
+        scaffold: AppColors.surface,
+        appBarForeground: AppColors.textPrimary,
+        fill: AppColors.surfaceMuted,
+        accent: AppColors.primary,
+        navIndicator: AppColors.wave,
+      );
 
+  static ThemeData get dark => _build(
+        brightness: Brightness.dark,
+        colorScheme: const ColorScheme.dark(
+          primary: AppColors.darkAccent,
+          onPrimary: Colors.white,
+          secondary: AppColors.darkAccent,
+          onSecondary: Colors.white,
+          surface: AppColors.darkSurface,
+          onSurface: Colors.white,
+          onSurfaceVariant: AppColors.darkSecondaryText,
+          outlineVariant: AppColors.darkDivider,
+        ),
+        scaffold: AppColors.darkBg,
+        appBarForeground: Colors.white,
+        fill: AppColors.darkSurface,
+        accent: AppColors.darkAccent,
+        navIndicator: Color(0x335D5FEF),
+      );
+
+  static ThemeData _build({
+    required Brightness brightness,
+    required ColorScheme colorScheme,
+    required Color scaffold,
+    required Color appBarForeground,
+    required Color fill,
+    required Color accent,
+    required Color navIndicator,
+  }) {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: AppColors.surface,
-      appBarTheme: const AppBarTheme(
+      scaffoldBackgroundColor: scaffold,
+      appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: AppColors.surface,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: scaffold,
+        foregroundColor: appBarForeground,
       ),
-      textTheme: _textTheme(Brightness.light),
-      inputDecorationTheme: _inputDecoration(colorScheme),
+      textTheme: _textTheme(brightness),
+      inputDecorationTheme: _inputDecoration(colorScheme, fill),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(52),
-          backgroundColor: AppColors.primary,
+          backgroundColor: accent,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(_radius),
@@ -38,21 +77,53 @@ abstract final class AppTheme {
           ),
         ),
       ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: accent,
+        foregroundColor: Colors.white,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          return Colors.white;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return accent;
+          }
+          return brightness == Brightness.dark
+              ? AppColors.darkDivider
+              : AppColors.fieldBorder;
+        }),
+      ),
       navigationBarTheme: NavigationBarThemeData(
-        indicatorColor: AppColors.wave,
+        backgroundColor: scaffold,
+        indicatorColor: navIndicator,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected
+                ? accent
+                : (brightness == Brightness.dark
+                    ? AppColors.darkSecondaryText
+                    : AppColors.textSecondary),
+          );
+        }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
           return TextStyle(
-            fontWeight: states.contains(WidgetState.selected)
-                ? FontWeight.w600
-                : FontWeight.w500,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            color: selected
+                ? accent
+                : (brightness == Brightness.dark
+                    ? AppColors.darkSecondaryText
+                    : AppColors.textSecondary),
           );
         }),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           minimumSize: const Size.fromHeight(52),
-          foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primary),
+          foregroundColor: accent,
+          side: BorderSide(color: accent),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(_radius),
           ),
@@ -62,16 +133,15 @@ abstract final class AppTheme {
           ),
         ),
       ),
-    );
-  }
-
-  static ThemeData get dark {
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.primary,
-        brightness: Brightness.dark,
+      dialogTheme: DialogThemeData(
+        backgroundColor: colorScheme.surface,
       ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: colorScheme.surface,
+        showDragHandle: true,
+      ),
+      dividerColor: colorScheme.outlineVariant,
+      cardColor: colorScheme.surface,
     );
   }
 
@@ -81,7 +151,7 @@ abstract final class AppTheme {
         : Colors.white;
     final secondary = brightness == Brightness.light
         ? AppColors.textSecondary
-        : Colors.white70;
+        : AppColors.darkSecondaryText;
 
     return TextTheme(
       headlineMedium: TextStyle(
@@ -100,6 +170,11 @@ abstract final class AppTheme {
         height: 1.4,
         color: secondary,
       ),
+      titleSmall: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: primary,
+      ),
       labelLarge: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w600,
@@ -107,7 +182,10 @@ abstract final class AppTheme {
     );
   }
 
-  static InputDecorationTheme _inputDecoration(ColorScheme colorScheme) {
+  static InputDecorationTheme _inputDecoration(
+    ColorScheme colorScheme,
+    Color fill,
+  ) {
     OutlineInputBorder border(Color color) {
       return OutlineInputBorder(
         borderRadius: BorderRadius.circular(_radius),
@@ -117,13 +195,14 @@ abstract final class AppTheme {
 
     return InputDecorationTheme(
       filled: true,
-      fillColor: AppColors.surfaceMuted,
+      fillColor: fill,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      prefixIconColor: AppColors.textSecondary,
-      suffixIconColor: AppColors.textSecondary,
-      labelStyle: const TextStyle(color: AppColors.textSecondary),
-      border: border(AppColors.fieldBorder),
-      enabledBorder: border(AppColors.fieldBorder),
+      prefixIconColor: colorScheme.onSurfaceVariant,
+      suffixIconColor: colorScheme.onSurfaceVariant,
+      labelStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+      hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+      border: border(colorScheme.outlineVariant),
+      enabledBorder: border(colorScheme.outlineVariant),
       focusedBorder: border(colorScheme.primary),
       errorBorder: border(colorScheme.error),
       focusedErrorBorder: border(colorScheme.error),

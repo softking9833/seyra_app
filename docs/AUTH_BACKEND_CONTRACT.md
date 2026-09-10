@@ -72,12 +72,27 @@ Returns only client-safe fields:
 {
   "id": "usr_...",
   "username": "ada",
+  "display_name": "Ada",
+  "bio": "…",
+  "has_avatar": false,
   "created_at": "2026-09-07T12:00:00.000Z"
 }
 ```
 
 Must **not** include password hashes, access tokens, refresh tokens, session
-HMAC secrets, or other internal security fields.
+HMAC secrets, avatar object keys, or other internal security fields.
+
+`PATCH /v1/users/me` `{ "display_name", "bio" }` updates the same public profile.
+
+`PATCH /v1/users/me/username` `{ "username" }` returns `409 username_taken` when taken.
+
+`POST /v1/users/me/avatar` multipart `file` (image). `DELETE /v1/users/me/avatar`.
+`GET /v1/users/{user_id}/avatar` is authorized; honors `photo_visible`.
+
+`POST /v1/auth/sessions/others` revokes every session except the caller (`204`).
+`GET /v1/auth/sessions` includes `current`, `user_agent`, timestamps — never tokens.
+
+`PUT /v1/privacy` also accepts `photo_visible`.
 
 ### Username search (`GET /v1/users/search?q=`)
 

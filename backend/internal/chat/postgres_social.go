@@ -61,13 +61,13 @@ func (s *PostgresStore) ReportUser(ctx context.Context, id, reporterID, targetID
 func (s *PostgresStore) GetPrivacy(ctx context.Context, userID string) (PrivacySettings, error) {
 	var p PrivacySettings
 	err := s.pool.QueryRow(ctx, `
-		SELECT user_id, last_seen_visible, read_receipts, typing_visible, profile_visible, notification_preview
+		SELECT user_id, last_seen_visible, read_receipts, typing_visible, profile_visible, notification_preview, COALESCE(photo_visible, TRUE)
 		FROM user_privacy WHERE user_id = $1
-	`, userID).Scan(&p.UserID, &p.LastSeenVisible, &p.ReadReceipts, &p.TypingVisible, &p.ProfileVisible, &p.NotificationPreview)
+	`, userID).Scan(&p.UserID, &p.LastSeenVisible, &p.ReadReceipts, &p.TypingVisible, &p.ProfileVisible, &p.NotificationPreview, &p.PhotoVisible)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PrivacySettings{
 			UserID: userID, LastSeenVisible: true, ReadReceipts: true,
-			TypingVisible: true, ProfileVisible: true, NotificationPreview: true,
+			TypingVisible: true, ProfileVisible: true, NotificationPreview: true, PhotoVisible: true,
 		}, nil
 	}
 	return p, err
@@ -75,15 +75,16 @@ func (s *PostgresStore) GetPrivacy(ctx context.Context, userID string) (PrivacyS
 
 func (s *PostgresStore) PutPrivacy(ctx context.Context, settings PrivacySettings) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO user_privacy (user_id, last_seen_visible, read_receipts, typing_visible, profile_visible, notification_preview)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO user_privacy (user_id, last_seen_visible, read_receipts, typing_visible, profile_visible, notification_preview, photo_visible)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id) DO UPDATE SET
 			last_seen_visible = EXCLUDED.last_seen_visible,
 			read_receipts = EXCLUDED.read_receipts,
 			typing_visible = EXCLUDED.typing_visible,
 			profile_visible = EXCLUDED.profile_visible,
-			notification_preview = EXCLUDED.notification_preview
-	`, settings.UserID, settings.LastSeenVisible, settings.ReadReceipts, settings.TypingVisible, settings.ProfileVisible, settings.NotificationPreview)
+			notification_preview = EXCLUDED.notification_preview,
+			photo_visible = EXCLUDED.photo_visible
+	`, settings.UserID, settings.LastSeenVisible, settings.ReadReceipts, settings.TypingVisible, settings.ProfileVisible, settings.NotificationPreview, settings.PhotoVisible)
 	return err
 }
 
@@ -386,6 +387,29 @@ func (s *PostgresStore) ListCalls(ctx context.Context, userID string, limit int)
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+func (s *PostgresStore) DeleteCall(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM call_sessions WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteCallsForUser(ctx context.Context, userID string) error {
+	_, err := s.pool.Exec(ctx, `
+		DELETE FROM call_sessions WHERE id IN (
+			SELECT DISTINCT c.id
+			FROM call_sessions c
+			LEFT JOIN call_participants p ON p.call_id = c.id
+			WHERE c.caller_id = $1 OR p.user_id = $1
+		)
+	`, userID)
+	return err
 }
 
 func (s *PostgresStore) InsertBot(ctx context.Context, bot Bot) error {

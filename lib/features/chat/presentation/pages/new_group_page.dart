@@ -124,7 +124,7 @@ class _NewGroupPageState extends State<NewGroupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surfaceMuted,
+      backgroundColor: AppColors.scaffoldOf(context),
       appBar: AppBar(
         title: Text(_isChannel ? 'New channel' : 'New group'),
         actions: [
@@ -150,13 +150,10 @@ class _NewGroupPageState extends State<NewGroupPage> {
               key: const Key('group_title_field'),
               controller: _title,
               textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                hintText: _isChannel ? 'Channel name' : 'Group name',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+              decoration: AppColors.searchField(
+                context,
+                hint: _isChannel ? 'Channel name' : 'Group name',
+                icon: Icons.edit_outlined,
               ),
             ),
           ),
@@ -186,14 +183,9 @@ class _NewGroupPageState extends State<NewGroupPage> {
               key: const Key('group_member_search_field'),
               controller: _username,
               onChanged: _onQueryChanged,
-              decoration: InputDecoration(
-                hintText: 'Search people to add',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+              decoration: AppColors.searchField(
+                context,
+                hint: 'Search people to add',
               ),
             ),
           ),
@@ -203,7 +195,7 @@ class _NewGroupPageState extends State<NewGroupPage> {
               child: Text(
                 _error!,
                 key: const Key('new_group_error'),
-                style: const TextStyle(color: Color(0xFFB91C1C)),
+                style: TextStyle(color: AppColors.dangerOf(context)),
               ),
             ),
           Expanded(
@@ -233,8 +225,13 @@ class _NewGroupPageState extends State<NewGroupPage> {
                             title: Text(user.username),
                             subtitle: Text('@${user.username}'),
                             secondary: CircleAvatar(
-                              backgroundColor: AppColors.wave,
-                              child: Text(chatInitials(user.username)),
+                              backgroundColor: AppColors.avatarFillOf(context),
+                              child: Text(
+                                chatInitials(user.username),
+                                style: TextStyle(
+                                  color: AppColors.avatarFgOf(context),
+                                ),
+                              ),
                             ),
                             onChanged: (value) {
                               setState(() {

@@ -90,6 +90,11 @@ final class SignalE2eService {
     };
   }
 
+  Future<bool> hasSession(String peerUserId) async {
+    await install();
+    return _store!.containsSession(SignalProtocolAddress(peerUserId, 1));
+  }
+
   Future<void> processRemoteBundle({
     required String userId,
     required Map<String, dynamic> bundle,
@@ -109,12 +114,13 @@ final class SignalE2eService {
     if (ot != null && ot.isNotEmpty) {
       oneTime = Curve.decodePoint(base64Decode(ot), 0);
     }
+    final preKeyId = oneTime == null ? null : _jsonInt(bundle['one_time_prekey_id']);
     final preKeyBundle = PreKeyBundle(
-      bundle['registration_id'] as int? ?? 0,
+      _jsonInt(bundle['registration_id']),
       1,
-      bundle['one_time_prekey_id'] as int? ?? 0,
+      preKeyId,
       oneTime,
-      bundle['signed_prekey_id'] as int? ?? 0,
+      _jsonInt(bundle['signed_prekey_id']),
       signedPub,
       base64Decode(bundle['signed_prekey_sig'] as String),
       identityPub,
@@ -149,17 +155,40 @@ final class SignalE2eService {
     final address = SignalProtocolAddress(peerUserId, 1);
     final cipher = SessionCipher.fromStore(_store!, address);
     final raw = base64Decode(ciphertext);
-    try {
-      final bytes = await cipher.decrypt(PreKeySignalMessage(raw));
-      await _persistState();
-      return utf8.decode(bytes);
-    } catch (_) {
-      final bytes = await cipher.decryptFromSignal(
-        SignalMessage.fromSerialized(raw),
-      );
-      await _persistState();
-      return utf8.decode(bytes);
+    if (_isPreKeyPayload(raw)) {
+      try {
+        final bytes = await cipher.decrypt(PreKeySignalMessage(raw));
+        await _persistState();
+        return utf8.decode(bytes);
+      } catch (_) {
+        // Payload sniffed as prekey but decrypt failed; try Whisper.
+      }
     }
+    final bytes = await cipher.decryptFromSignal(
+      SignalMessage.fromSerialized(raw),
+    );
+    await _persistState();
+    return utf8.decode(bytes);
+  }
+
+  bool _isPreKeyPayload(Uint8List raw) {
+    try {
+      final message = PreKeySignalMessage(raw);
+      return message.getSignedPreKeyId() >= 0 &&
+          message.getWhisperMessage().serialize().isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static int _jsonInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse('$value') ?? 0;
   }
 
   Future<void> _persistState() async {

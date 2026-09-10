@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -36,6 +38,14 @@ func NewServer(authService *auth.Service, chatService *chat.Service, hub *chat.H
 	mux.HandleFunc("GET /v1/auth/sessions", s.listAuthSessions)
 	mux.HandleFunc("DELETE /v1/auth/sessions/{session_id}", s.revokeAuthSession)
 	mux.HandleFunc("GET /v1/users/me", s.me)
+	mux.HandleFunc("PATCH /v1/users/me", s.patchMe)
+	mux.HandleFunc("PUT /v1/users/me", s.patchMe)
+	mux.HandleFunc("PATCH /v1/users/me/username", s.patchUsername)
+	mux.HandleFunc("PUT /v1/users/me/username", s.patchUsername)
+	mux.HandleFunc("POST /v1/users/me/avatar", s.uploadAvatar)
+	mux.HandleFunc("DELETE /v1/users/me/avatar", s.deleteAvatar)
+	mux.HandleFunc("GET /v1/users/{user_id}/avatar", s.getAvatar)
+	mux.HandleFunc("POST /v1/auth/sessions/others", s.revokeOtherSessions)
 	mux.HandleFunc("GET /v1/users/search", s.searchUsers)
 	mux.HandleFunc("POST /v1/chats", s.createChat)
 	mux.HandleFunc("POST /v1/chats/groups", s.createGroup)
@@ -71,6 +81,7 @@ func NewServer(authService *auth.Service, chatService *chat.Service, hub *chat.H
 	mux.HandleFunc("GET /v1/stickers", s.listStickers)
 	mux.HandleFunc("GET /v1/users/{user_id}/last-seen", s.peerLastSeen)
 	mux.HandleFunc("GET /v1/chats/{chat_id}/receipts", s.chatReceipts)
+	mux.HandleFunc("POST /v1/chats/{chat_id}/read", s.markChatRead)
 	mux.HandleFunc("PUT /v1/chats/{chat_id}/messages/{message_id}/reactions", s.reactToMessage)
 	mux.HandleFunc("GET /v1/search", s.search)
 	mux.HandleFunc("GET /v1/channels/discover", s.discoverChannels)
@@ -88,6 +99,8 @@ func NewServer(authService *auth.Service, chatService *chat.Service, hub *chat.H
 	mux.HandleFunc("POST /v1/calls", s.startCallHTTP)
 	mux.HandleFunc("POST /v1/calls/{call_id}/signal", s.signalCallHTTP)
 	mux.HandleFunc("GET /v1/calls", s.listCalls)
+	mux.HandleFunc("DELETE /v1/calls", s.clearCalls)
+	mux.HandleFunc("DELETE /v1/calls/{call_id}", s.deleteCall)
 	mux.HandleFunc("POST /v1/bots", s.createBot)
 	mux.HandleFunc("GET /v1/bots", s.listBots)
 	mux.HandleFunc("DELETE /v1/bots/{bot_id}", s.deleteBot)
@@ -98,7 +111,7 @@ func NewServer(authService *auth.Service, chatService *chat.Service, hub *chat.H
 	mux.HandleFunc("GET /v1/notifications/preferences", s.getNotificationPreferences)
 	mux.HandleFunc("PUT /v1/notifications/preferences", s.putNotificationPreferences)
 	mux.HandleFunc("GET /v1/realtime", s.realtime)
-	return withLogging(withMaxBody(mux))
+	return withLogging(withCORS(withMaxBody(mux)))
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
@@ -128,6 +141,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, err)
 		return
 	}
+	s.auth.AnnotateSession(r.Context(), issued.AccessToken, r.UserAgent())
 	writeJSON(w, http.StatusCreated, sessionPayload(issued))
 }
 
@@ -141,6 +155,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, err)
 		return
 	}
+	s.auth.AnnotateSession(r.Context(), issued.AccessToken, r.UserAgent())
 	writeJSON(w, http.StatusOK, sessionPayload(issued))
 }
 
@@ -280,9 +295,11 @@ func decodePassword(w http.ResponseWriter, r *http.Request) (passwordRequest, bo
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dest any) bool {
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dest); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_input", "Invalid request body")
+		if errors.Is(err, io.EOF) {
+			return true
+		}
+		writeError(w, http.StatusBadRequest, "invalid_input", "Invalid request")
 		return false
 	}
 	return true
@@ -307,11 +324,14 @@ func sessionPayload(issued auth.IssuedSession) map[string]any {
 	}
 }
 
-func publicProfile(user auth.User) map[string]string {
-	return map[string]string{
-		"id":         user.ID,
-		"username":   user.Username,
-		"created_at": user.CreatedAt.UTC().Format(time.RFC3339Nano),
+func publicProfile(user auth.User) map[string]any {
+	return map[string]any{
+		"id":           user.ID,
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"bio":          user.Bio,
+		"has_avatar":   user.AvatarKey != "",
+		"created_at":   user.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }
 
@@ -380,12 +400,44 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
+func withCORS(next http.Handler) http.Handler {
+	allowed := map[string]struct{}{}
+	raw := strings.TrimSpace(os.Getenv("SEYRA_CORS_ORIGINS"))
+	if raw == "" {
+		raw = "http://172.20.1.78:5000"
+	}
+	for _, origin := range strings.Split(raw, ",") {
+		origin = strings.TrimSpace(origin)
+		if origin != "" {
+			allowed[origin] = struct{}{}
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if _, ok := allowed[origin]; ok {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func withMaxBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
-		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/attachments") {
-			r.Body = http.MaxBytesReader(w, r.Body, 26<<20)
+		limit := int64(16 * 1024)
+		if r.Method == http.MethodPost {
+			path := r.URL.Path
+			if strings.HasSuffix(path, "/attachments") || strings.HasSuffix(path, "/avatar") {
+				limit = 26 << 20
+			}
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		next.ServeHTTP(w, r)
 	})
 }

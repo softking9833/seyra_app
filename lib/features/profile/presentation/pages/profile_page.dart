@@ -66,7 +66,7 @@ class _ProfilePageState extends State<ProfilePage> {
             }
 
             return ColoredBox(
-              color: AppColors.surfaceMuted,
+              color: AppColors.scaffoldOf(context),
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 32),
                 children: [
@@ -119,10 +119,10 @@ class _ProfilePageState extends State<ProfilePage> {
                             icon: Icons.fingerprint,
                             title: 'User ID',
                             subtitle: account?.id ?? profile.userId,
-                            trailing: const Icon(
+                            trailing: Icon(
                               Icons.copy_outlined,
                               size: 18,
-                              color: AppColors.textSecondary,
+                              color: AppColors.hintOf(context),
                             ),
                             onTap: () {
                               Clipboard.setData(
@@ -165,8 +165,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       SettingsTile(
                         key: const Key('profile_logout_tile'),
                         icon: Icons.logout,
-                        iconColor: const Color(0xFFB91C1C),
-                        titleColor: const Color(0xFFB91C1C),
+                        iconColor: AppColors.dangerOf(context),
+                        titleColor: AppColors.dangerOf(context),
                         title: 'Log out',
                         subtitle: 'Sign out of this device',
                         onTap: widget.onLogout,

@@ -38,6 +38,37 @@ String formatDateSeparator(DateTime value, {DateTime? now}) {
   return '${local.day}/${local.month}/${local.year}';
 }
 
+String formatShortDateTime(DateTime value) {
+  final local = value.toLocal();
+  final y = local.year.toString().padLeft(4, '0');
+  final m = local.month.toString().padLeft(2, '0');
+  final d = local.day.toString().padLeft(2, '0');
+  return '$y-$m-$d ${formatMessageTime(local)}';
+}
+
+String describeDevice(String userAgent) {
+  final value = userAgent.trim();
+  final lower = value.toLowerCase();
+  if (lower.contains('android')) {
+    return 'Android';
+  }
+  if (lower.contains('iphone') ||
+      lower.contains('ipad') ||
+      lower.contains('ios')) {
+    return 'iOS';
+  }
+  if (lower.contains('windows')) {
+    return 'Windows';
+  }
+  if (value.isEmpty) {
+    return 'Unknown device';
+  }
+  if (value.length > 42) {
+    return '${value.substring(0, 40)}…';
+  }
+  return value;
+}
+
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
 }

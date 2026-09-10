@@ -50,10 +50,12 @@ void main() {
 
     await tester.longPress(find.text('delete me'));
     await tester.pumpAndSettle();
+    expect(find.text('Reply'), findsOneWidget);
+    expect(find.text('Copy'), findsOneWidget);
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
     expect(find.text('Delete message?'), findsOneWidget);
-    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await tester.tap(find.byKey(const Key('confirm_delete_message')));
     await tester.pumpAndSettle();
     expect(repo.deletedId, 'msg_mine');
     expect(repo.activeId, 'cht_1');

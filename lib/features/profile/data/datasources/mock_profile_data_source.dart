@@ -1,13 +1,17 @@
 import 'dart:async';
 
+import 'package:seyra/core/theme/theme_controller.dart';
 import 'package:seyra/features/profile/data/datasources/profile_data_source.dart';
 import 'package:seyra/features/profile/domain/entities/user_profile.dart';
 
 final class MockProfileDataSource implements ProfileDataSource {
-  MockProfileDataSource() : _preferences = const UserPreferences();
+  MockProfileDataSource({this.themeController})
+      : _preferences = const UserPreferences();
 
+  final ThemeController? themeController;
   final Map<String, UserProfile> _profiles = {};
   UserPreferences _preferences;
+  UserProfile? _last;
 
   final _profileController = StreamController<UserProfile>.broadcast();
   final _preferencesController =
@@ -29,35 +33,100 @@ final class MockProfileDataSource implements ProfileDataSource {
   }
 
   @override
-  UserProfile updateProfile({
+  Future<UserProfile> updateProfile({
     required String userId,
     required String displayName,
     required String bio,
-  }) {
-    final current = _profiles[userId];
-    if (current == null) {
-      final created = UserProfile(
-        userId: userId,
-        username: 'user',
-        displayName: displayName,
-        bio: bio,
-      );
-      _profiles[userId] = created;
-      _profileController.add(created);
-      return created;
-    }
+  }) async {
+    final current = _ensureProfile(userId: userId, username: 'user');
     final updated = current.copyWith(displayName: displayName, bio: bio);
     _profiles[userId] = updated;
+    _last = updated;
     _profileController.add(updated);
     return updated;
   }
 
   @override
-  UserPreferences updatePreferences(UserPreferences preferences) {
+  Future<UserProfile> changeUsername(String username) async {
+    final current = _last;
+    if (current == null) {
+      return UserProfile(
+        userId: 'usr_1',
+        username: username,
+        displayName: username,
+        bio: '',
+      );
+    }
+    final updated = current.copyWith(username: username);
+    _profiles[current.userId] = updated;
+    _last = updated;
+    _profileController.add(updated);
+    return updated;
+  }
+
+  @override
+  Future<UserPreferences> updatePreferences(UserPreferences preferences) async {
     _preferences = preferences;
+    themeController?.apply(preferences.appearance);
     _preferencesController.add(_preferences);
     return _preferences;
   }
+
+  @override
+  Future<UserProfile> uploadAvatar({
+    required List<int> bytes,
+    required String filename,
+    required String contentType,
+  }) async {
+    final current = _last;
+    if (current == null) {
+      return const UserProfile(
+        userId: 'usr_1',
+        username: 'user',
+        displayName: 'User',
+        bio: '',
+        hasAvatar: true,
+      );
+    }
+    final updated = current.copyWith(hasAvatar: true);
+    _profiles[current.userId] = updated;
+    _last = updated;
+    _profileController.add(updated);
+    _avatarBytes = bytes;
+    return updated;
+  }
+
+  List<int>? _avatarBytes;
+
+  @override
+  Future<UserProfile> removeAvatar() async {
+    _avatarBytes = null;
+    final current = _last;
+    if (current == null) {
+      return const UserProfile(
+        userId: 'usr_1',
+        username: 'user',
+        displayName: 'User',
+        bio: '',
+      );
+    }
+    final updated = current.copyWith(hasAvatar: false);
+    _profiles[current.userId] = updated;
+    _last = updated;
+    _profileController.add(updated);
+    return updated;
+  }
+
+  @override
+  Future<List<int>?> fetchAvatar(String userId) async {
+    if (_last?.userId == userId && _last?.hasAvatar == true) {
+      return _avatarBytes;
+    }
+    return null;
+  }
+
+  @override
+  Future<void> reloadRemote() async {}
 
   UserProfile _ensureProfile({
     required String userId,
@@ -65,6 +134,7 @@ final class MockProfileDataSource implements ProfileDataSource {
   }) {
     final existing = _profiles[userId];
     if (existing != null) {
+      _last = existing;
       return existing;
     }
     final created = UserProfile(
@@ -74,6 +144,7 @@ final class MockProfileDataSource implements ProfileDataSource {
       bio: 'Private messaging on Seyra.',
     );
     _profiles[userId] = created;
+    _last = created;
     return created;
   }
 

@@ -33,6 +33,21 @@ final class PushCoordinator {
   StreamSubscription<dynamic>? _sub;
   var _started = false;
 
+  bool get isStarted => _started;
+
+  String get platformLabel {
+    return defaultTargetPlatform == TargetPlatform.iOS
+        ? 'iOS'
+        : defaultTargetPlatform == TargetPlatform.android
+        ? 'Android'
+        : 'This platform';
+  }
+
+  Future<bool> hasServerDevice() async {
+    final id = await secureStorage.read(_idKey);
+    return id != null && id.isNotEmpty;
+  }
+
   Future<void> start() async {
     if (_started) {
       return;

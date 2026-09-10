@@ -183,3 +183,43 @@ func TestSearchUsers(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateProfileAndUsername(t *testing.T) {
+	svc := NewService(NewMemoryStore(), "test-session-pepper-value")
+	ctx := context.Background()
+	issued, err := svc.Register(ctx, "ada", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := svc.UpdateProfile(ctx, issued.AccessToken, "Ada Lovelace", "Builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.DisplayName != "Ada Lovelace" || updated.Bio != "Builder" {
+		t.Fatalf("profile %+v", updated)
+	}
+	renamed, err := svc.ChangeUsername(ctx, issued.AccessToken, "ada_prime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Username != "ada_prime" {
+		t.Fatalf("username %q", renamed.Username)
+	}
+	_, err = svc.Register(ctx, "lin", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ChangeUsername(ctx, issued.AccessToken, "lin"); !errors.Is(err, ErrUsernameTaken) {
+		t.Fatalf("expected taken, got %v", err)
+	}
+	other, err := svc.Login(ctx, "ada_prime", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RevokeOtherSessions(ctx, other.AccessToken); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.CurrentSession(ctx, issued.AccessToken); !errors.Is(err, ErrUnauthorized) && !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("expected revoked first session, got %v", err)
+	}
+}

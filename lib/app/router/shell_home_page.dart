@@ -147,6 +147,8 @@ class _ShellHomePageState extends State<ShellHomePage> {
         'video': payload['kind'] == 'video',
         'outgoing': false,
         'payload': payload,
+        'peerId': payload['caller_id'] as String? ?? '',
+        'title': payload['username'] as String? ?? '',
       },
     );
   }
@@ -298,7 +300,11 @@ class _ShellHomePageState extends State<ShellHomePage> {
               );
             },
           ),
-          CallHistoryPage(social: AppDependencies.chatSocial),
+          CallHistoryPage(
+            social: AppDependencies.chatSocial,
+            currentUserId: _session!.user.id,
+            active: _tabIndex == 1,
+          ),
           const           _PlaceholderTab(
             icon: Icons.people_outline,
             title: 'Contacts',
@@ -315,7 +321,8 @@ class _ShellHomePageState extends State<ShellHomePage> {
           ),
         ],
       ),
-      floatingActionButton: _tabIndex == 0
+      floatingActionButton: _tabIndex == 0 &&
+              (ModalRoute.of(context)?.isCurrent ?? true)
           ? FloatingActionButton(
               key: const Key('new_chat_fab'),
               onPressed: () {
@@ -326,8 +333,6 @@ class _ShellHomePageState extends State<ShellHomePage> {
                 };
                 Navigator.of(context).pushNamed(route);
               },
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
               child: const Icon(Icons.edit_outlined),
             )
           : null,
@@ -420,7 +425,7 @@ class _PlaceholderTab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 48, color: AppColors.textSecondary),
+            Icon(icon, size: 48, color: AppColors.hintOf(context)),
             const SizedBox(height: 12),
             Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),

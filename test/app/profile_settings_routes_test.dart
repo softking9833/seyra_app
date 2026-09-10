@@ -77,6 +77,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Log out'));
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Log out'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.byType(SettingsPage), findsNothing);
@@ -152,7 +154,55 @@ void main() {
     expect(find.byType(DeleteAccountPage), findsNothing);
   });
 
-  testWidgets('edit profile saves a local display name', (tester) async {
+  testWidgets('theme dark mode applies immediately', (tester) async {
+    await register(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Profile'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile_open_settings_button')));
+    await tester.pumpAndSettle();
+    final settingsScroll = find.descendant(
+      of: find.byKey(const Key('settings_scroll')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Dark mode'),
+      300,
+      scrollable: settingsScroll,
+    );
+    await tester.tap(find.text('Dark mode'));
+    await tester.pumpAndSettle();
+    expect(AppDependencies.themeController.value, ThemeMode.dark);
+  });
+
+  testWidgets('username page validates then saves', (tester) async {
+    await register(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Profile'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile_open_settings_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Username'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'ab');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('3–32'), findsWidgets);
+    await tester.enterText(find.byType(TextField), 'ada_prime');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('@ada_prime'), findsWidgets);
+  });
+
+  testWidgets('edit profile saves a display name', (tester) async {
     await register(tester);
     await tester.tap(
       find.descendant(

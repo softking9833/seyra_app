@@ -74,7 +74,7 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surfaceMuted,
+      backgroundColor: AppColors.scaffoldOf(context),
       appBar: AppBar(
         title: const Text('Delete account'),
       ),
@@ -83,28 +83,42 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
-              color: const Color(0xFFFEF2F2),
+              color: AppColors.dangerFillOf(context),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFECACA)),
+              border: Border.all(color: AppColors.dangerBorderOf(context)),
             ),
-            child: const Padding(
-              padding: EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'This cannot be undone',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF991B1B),
-                    ),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: AppColors.dangerTitleOf(context),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'This cannot be undone',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.dangerTitleOf(context),
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
-                    'Deleting your Seyra account permanently removes your '
-                    'username and signs you out on this device. This action '
-                    'cannot be reversed.',
-                    style: TextStyle(height: 1.4, color: Color(0xFF7F1D1D)),
+                    'Deleting your Seyra account is permanent. Your username, '
+                    'profile, sessions, and bot tokens are removed. Chat history '
+                    'for other members may remain with your sender identity cleared. '
+                    'This cannot be undone. You must re-enter your password.',
+                    style: TextStyle(
+                      height: 1.4,
+                      color: AppColors.dangerBodyOf(context),
+                    ),
                   ),
                 ],
               ),
@@ -158,14 +172,18 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
             const SizedBox(height: 12),
             Text(
               _error!,
-              style: const TextStyle(color: Color(0xFFB91C1C)),
+              style: TextStyle(color: AppColors.dangerOf(context)),
             ),
           ],
           const SizedBox(height: 28),
           FilledButton(
             key: const Key('delete_account_confirm_button'),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB91C1C),
+              backgroundColor: AppColors.dangerOf(context),
+              disabledBackgroundColor: AppColors.isDark(context)
+                  ? AppColors.darkDivider
+                  : AppColors.fieldBorder,
+              disabledForegroundColor: AppColors.hintOf(context),
             ),
             onPressed: _canSubmit ? _submit : null,
             child: _submitting

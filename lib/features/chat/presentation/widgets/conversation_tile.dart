@@ -26,7 +26,7 @@ class ConversationTile extends StatelessWidget {
       title: Row(
         children: [
           if (conversation.isPinned) ...[
-            const Icon(Icons.push_pin, size: 14, color: AppColors.textSecondary),
+            Icon(Icons.push_pin, size: 14, color: AppColors.hintOf(context)),
             const SizedBox(width: 4),
           ],
           Expanded(
@@ -43,7 +43,7 @@ class ConversationTile extends StatelessWidget {
             formatConversationTime(conversation.lastMessageAt),
             style: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 12,
-              color: unread ? AppColors.primary : AppColors.textSecondary,
+              color: unread ? AppColors.accentOf(context) : AppColors.hintOf(context),
               fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
             ),
           ),
@@ -60,19 +60,19 @@ class ConversationTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: unread
-                      ? AppColors.textPrimary
-                      : AppColors.textSecondary,
+                      ? AppColors.textOf(context)
+                      : AppColors.hintOf(context),
                   fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
                 ),
               ),
             ),
             if (conversation.isMuted)
-              const Padding(
-                padding: EdgeInsets.only(left: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
                 child: Icon(
                   Icons.volume_off_outlined,
                   size: 16,
-                  color: AppColors.textSecondary,
+                  color: AppColors.hintOf(context),
                 ),
               ),
             if (unread)
@@ -81,8 +81,8 @@ class ConversationTile extends StatelessWidget {
                 child: Container(
                   constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
                   padding: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: const BoxDecoration(
-                    color: AppColors.primary,
+                  decoration: BoxDecoration(
+                    color: AppColors.accentOf(context),
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,

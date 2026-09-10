@@ -1,6 +1,16 @@
 enum VisibilityPreference { everyone, contacts, nobody }
 
-enum AppearancePreference { system, light, dark }
+enum AppearancePreference { light, dark }
+
+bool visibilityToEveryone(VisibilityPreference value) {
+  return value != VisibilityPreference.nobody;
+}
+
+VisibilityPreference visibilityFromEveryone(bool everyone) {
+  return everyone
+      ? VisibilityPreference.everyone
+      : VisibilityPreference.nobody;
+}
 
 final class UserProfile {
   const UserProfile({
@@ -8,6 +18,7 @@ final class UserProfile {
     required this.username,
     required this.displayName,
     required this.bio,
+    this.hasAvatar = false,
     this.isPremium = false,
   });
 
@@ -15,18 +26,23 @@ final class UserProfile {
   final String username;
   final String displayName;
   final String bio;
+  final bool hasAvatar;
   final bool isPremium;
 
   UserProfile copyWith({
+    String? username,
     String? displayName,
     String? bio,
+    bool? hasAvatar,
+    bool? isPremium,
   }) {
     return UserProfile(
       userId: userId,
-      username: username,
+      username: username ?? this.username,
       displayName: displayName ?? this.displayName,
       bio: bio ?? this.bio,
-      isPremium: isPremium,
+      hasAvatar: hasAvatar ?? this.hasAvatar,
+      isPremium: isPremium ?? this.isPremium,
     );
   }
 }
@@ -40,6 +56,7 @@ final class UserPreferences {
     this.callNotifications = true,
     this.appearance = AppearancePreference.light,
   });
+
 
   final VisibilityPreference lastSeenVisibility;
   final VisibilityPreference profilePhotoVisibility;

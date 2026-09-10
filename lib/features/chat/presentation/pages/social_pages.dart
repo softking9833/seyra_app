@@ -7,6 +7,8 @@ import 'package:seyra/core/theme/app_colors.dart';
 import 'package:seyra/features/chat/domain/entities/conversation.dart';
 import 'package:seyra/features/chat/domain/entities/social_models.dart';
 import 'package:seyra/features/chat/domain/repositories/chat_social_repository.dart';
+import 'package:seyra/features/chat/presentation/formatters/chat_time_format.dart';
+import 'package:seyra/app/di/app_dependencies.dart';
 import 'package:seyra/app/router/app_routes.dart';
 
 class GlobalSearchPage extends StatefulWidget {
@@ -51,7 +53,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Search')),
-      backgroundColor: AppColors.surfaceMuted,
+      backgroundColor: AppColors.scaffoldOf(context),
       body: Column(
         children: [
           Padding(
@@ -63,11 +65,9 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                   unawaited(_run(value.trim()));
                 }
               },
-              decoration: const InputDecoration(
-                hintText: 'Users, chats, messages',
-                prefixIcon: Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
+              decoration: AppColors.searchField(
+                context,
+                hint: 'Users, chats, messages',
               ),
             ),
           ),
@@ -75,11 +75,19 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              child: Text(
+                _error!,
+                style: TextStyle(color: AppColors.dangerOf(context)),
+              ),
             ),
           Expanded(
             child: _query.trim().length < 2
-                ? const Center(child: Text('Type at least 2 characters'))
+                ? Center(
+                    child: Text(
+                      'Type at least 2 characters',
+                      style: TextStyle(color: AppColors.hintOf(context)),
+                    ),
+                  )
                 : ListView(
                     children: [
                       if (_result.users.isNotEmpty)
@@ -168,18 +176,16 @@ class _DiscoverChannelsPageState extends State<DiscoverChannelsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Discover channels')),
-      backgroundColor: AppColors.surfaceMuted,
+      backgroundColor: AppColors.scaffoldOf(context),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
               onChanged: (value) => unawaited(_load(value.trim())),
-              decoration: const InputDecoration(
-                hintText: 'Search public channels',
-                prefixIcon: Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
+              decoration: AppColors.searchField(
+                context,
+                hint: 'Search public channels',
               ),
             ),
           ),
@@ -188,7 +194,12 @@ class _DiscoverChannelsPageState extends State<DiscoverChannelsPage> {
             TextButton(onPressed: () => _load(''), child: Text('Retry: $_error')),
           Expanded(
             child: _items.isEmpty && !_loading
-                ? const Center(child: Text('No public channels'))
+                ? Center(
+                    child: Text(
+                      'No public channels',
+                      style: TextStyle(color: AppColors.hintOf(context)),
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: _items.length,
                     itemBuilder: (context, index) {
@@ -254,12 +265,14 @@ class _PrivacyControlsPageState extends State<PrivacyControlsPage> {
   Future<void> _save(PrivacySettings next) async {
     setState(() => _settings = next);
     await widget.social.putPrivacy(next);
+    await AppDependencies.profileRepository.reloadRemote();
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = _settings;
     return Scaffold(
+      backgroundColor: AppColors.scaffoldOf(context),
       appBar: AppBar(title: const Text('Privacy')),
       body: settings == null
           ? Center(
@@ -308,6 +321,15 @@ class _PrivacyControlsPageState extends State<PrivacyControlsPage> {
                   onChanged: (value) =>
                       _save(settings.copyWith(notificationPreview: value)),
                 ),
+                SwitchListTile(
+                  title: const Text('Profile photo visible'),
+                  subtitle: const Text(
+                    'When off, other people cannot download your avatar. You can always see your own.',
+                  ),
+                  value: settings.photoVisible,
+                  onChanged: (value) =>
+                      _save(settings.copyWith(photoVisible: value)),
+                ),
               ],
             ),
     );
@@ -340,7 +362,7 @@ class _SessionsPageState extends State<SessionsPage> {
     }
     if (result is Success<List<AuthDeviceSession>>) {
       setState(() {
-        _items = result.value;
+        _items = result.value.where((session) => !session.revoked).toList();
         _loading = false;
       });
     } else {
@@ -351,23 +373,103 @@ class _SessionsPageState extends State<SessionsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.scaffoldOf(context),
       appBar: AppBar(title: const Text('Devices & sessions')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
-          ? const Center(child: Text('No sessions'))
+          ? const Center(child: Text('No active sessions'))
           : ListView(
               children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: Text(
+                      'Each row is a signed-in device. Revoking signs that device out. Expired or already revoked sessions are not listed. Tokens are never shown.',
+                      style: TextStyle(color: AppColors.hintOf(context)),
+                    ),
+                  ),
                 for (final session in _items)
                   ListTile(
-                    title: Text(session.id),
-                    subtitle: Text(session.revoked ? 'Revoked' : 'Active'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.logout),
+                    title: Text(
+                      session.current
+                          ? 'This device'
+                          : describeDevice(session.userAgent),
+                    ),
+                    subtitle: Text(
+                      [
+                        if (session.current) 'Current'
+                        else 'Active',
+                        if (session.createdAt != null)
+                          'signed in ${formatShortDateTime(session.createdAt!)}',
+                        'expires ${formatShortDateTime(session.expiresAt)}',
+                      ].join(' · '),
+                    ),
+                    trailing: session.current
+                        ? null
+                        : IconButton(
+                            tooltip: 'Revoke this session',
+                            icon: const Icon(Icons.logout),
+                            onPressed: () async {
+                              final ok = await showDialog<bool>(
+                                context: context,
+                                builder: (context) {
+                                  return AlertDialog(
+                                    title: const Text('Revoke session?'),
+                                    content: const Text(
+                                      'That device will be signed out immediately.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(context, true),
+                                        child: const Text('Revoke'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                              if (ok == true) {
+                                await widget.social.revokeSession(session.id);
+                                await _load();
+                              }
+                            },
+                          ),
+                  ),
+                if (_items.any((s) => !s.current))
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: OutlinedButton(
                       onPressed: () async {
-                        await widget.social.revokeSession(session.id);
-                        await _load();
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (context) {
+                            return AlertDialog(
+                              title: const Text('Sign out other sessions?'),
+                              content: const Text(
+                                'Every other device will be signed out. This device stays signed in.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Revoke others'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                        if (ok == true) {
+                          await widget.social.revokeOtherSessions();
+                          await _load();
+                        }
                       },
+                      child: const Text('Revoke other sessions'),
                     ),
                   ),
               ],
@@ -413,18 +515,24 @@ class _BotsPageState extends State<BotsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.scaffoldOf(context),
       appBar: AppBar(title: const Text('Bots')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Text(
+            'A bot is a special account you own. Create one, copy the token (shown once), then grant it into a group or channel you admin. The token is hashed on the server and never listed again. In a granted room the bot can answer /ping, /help, and /whoami when it has can_send. Permissions (read, send, manage messages, manage members) are enforced on the server.',
+            style: TextStyle(color: AppColors.hintOf(context)),
+          ),
+          const SizedBox(height: 16),
           TextField(
             controller: _username,
             decoration: const InputDecoration(labelText: 'Bot username'),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Commands in a granted room: /ping, /help, /whoami. Token is shown once.',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: AppColors.hintOf(context)),
           ),
           FilledButton(
             onPressed: () async {
@@ -435,12 +543,24 @@ class _BotsPageState extends State<BotsPage> {
                 if (!context.mounted) {
                   return;
                 }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Token copied once: $token — grant it into a group then send /ping',
-                    ),
-                  ),
+                await showDialog<void>(
+                  context: context,
+                  builder: (context) {
+                    return AlertDialog(
+                      title: const Text('Bot token (once)'),
+                      content: SelectableText(
+                        token.isEmpty
+                            ? 'No token returned'
+                            : token,
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('I stored it'),
+                        ),
+                      ],
+                    );
+                  },
                 );
                 await _load();
               }
@@ -450,22 +570,26 @@ class _BotsPageState extends State<BotsPage> {
           const SizedBox(height: 16),
           TextField(
             controller: _grantChat,
-            decoration: const InputDecoration(labelText: 'Conversation ID to grant'),
+            decoration: const InputDecoration(
+              labelText: 'Group or channel ID',
+              helperText: 'Add the bot to a room you admin, then send /ping',
+            ),
           ),
+          if (_bots.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 24),
+              child: Text('No bots yet. Create one to get a token (shown once).'),
+            ),
           for (final bot in _bots)
             ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.smart_toy_outlined)),
               title: Text(bot.username),
-              subtitle: Text(bot.id),
+              subtitle: const Text('Bot account · token is not stored in the app'),
               trailing: Wrap(
                 children: [
                   TextButton(
-                    onPressed: () async {
-                      await widget.social.grantBot(
-                        botId: bot.id,
-                        conversationId: _grantChat.text.trim(),
-                      );
-                    },
-                    child: const Text('Grant'),
+                    onPressed: () => _grant(bot),
+                    child: const Text('Permissions'),
                   ),
                   IconButton(
                     onPressed: () async {
@@ -481,12 +605,87 @@ class _BotsPageState extends State<BotsPage> {
       ),
     );
   }
+
+  Future<void> _grant(BotAccount bot) async {
+    var canRead = true;
+    var canSend = true;
+    var canManageMessages = false;
+    var canManageMembers = false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: Text('Grant ${bot.username}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Room: ${_grantChat.text.trim()}'),
+                  CheckboxListTile(
+                    title: const Text('can_read'),
+                    value: canRead,
+                    onChanged: (value) => setLocal(() => canRead = value ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('can_send'),
+                    value: canSend,
+                    onChanged: (value) => setLocal(() => canSend = value ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('can_manage_messages'),
+                    value: canManageMessages,
+                    onChanged: (value) =>
+                        setLocal(() => canManageMessages = value ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('can_manage_members'),
+                    value: canManageMembers,
+                    onChanged: (value) =>
+                        setLocal(() => canManageMembers = value ?? false),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Grant'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (confirmed != true) {
+      return;
+    }
+    await widget.social.grantBot(
+      botId: bot.id,
+      conversationId: _grantChat.text.trim(),
+      canRead: canRead,
+      canSend: canSend,
+      canManageMessages: canManageMessages,
+      canManageMembers: canManageMembers,
+    );
+  }
 }
 
 class CallHistoryPage extends StatefulWidget {
-  const CallHistoryPage({super.key, required this.social});
+  const CallHistoryPage({
+    super.key,
+    required this.social,
+    required this.currentUserId,
+    this.active = true,
+  });
 
   final ChatSocialRepository social;
+  final String currentUserId;
+  final bool active;
 
   @override
   State<CallHistoryPage> createState() => _CallHistoryPageState();
@@ -494,37 +693,187 @@ class CallHistoryPage extends StatefulWidget {
 
 class _CallHistoryPageState extends State<CallHistoryPage> {
   var _items = const <CallRecord>[];
+  var _loading = true;
+  StreamSubscription<Map<String, dynamic>>? _signals;
 
   @override
   void initState() {
     super.initState();
-    unawaited(() async {
-      final result = await widget.social.listCalls();
-      if (result is Success<List<CallRecord>> && mounted) {
-        setState(() => _items = result.value);
-      }
-    }());
+    unawaited(_load());
+    _signals = widget.social.watchCallSignals().listen((_) {
+      unawaited(_load());
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant CallHistoryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      unawaited(_load());
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_signals?.cancel());
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final result = await widget.social.listCalls();
+    if (!mounted) {
+      return;
+    }
+    if (result is Success<List<CallRecord>>) {
+      setState(() {
+        _items = result.value;
+        _loading = false;
+      });
+    } else {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _deleteOne(CallRecord call) async {
+    await widget.social.deleteCall(call.id);
+    await _load();
+  }
+
+  Future<void> _clearAll() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.isDark(context)
+              ? AppColors.darkSurface
+              : null,
+          title: const Text('Clear call history?'),
+          content: const Text(
+            'This removes call records from your account. It does not delete the chats.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Clear'),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok == true) {
+      await widget.social.clearCallHistory();
+      await _load();
+    }
+  }
+
+  String _title(CallRecord call) {
+    if (call.peerName.trim().isNotEmpty) {
+      return call.peerName.trim();
+    }
+    return 'Unknown';
+  }
+
+  String _subtitle(CallRecord call) {
+    final outgoing = call.outgoing || call.callerId == widget.currentUserId;
+    final direction = outgoing ? 'Outgoing' : 'Incoming';
+    final kind = call.kind == 'video' ? 'video' : 'voice';
+    final when = formatConversationTime(call.createdAt);
+    final missed = call.state == 'missed' || call.state == 'rejected';
+    final status = missed ? 'missed' : call.state;
+    final duration = (call.durationSeconds ?? 0) > 0
+        ? ' · ${call.durationSeconds}s'
+        : '';
+    return '$direction $kind · $status$duration · $when';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Calls')),
-      body: _items.isEmpty
-          ? const Center(child: Text('No calls yet'))
-          : ListView(
-              children: [
-                for (final call in _items)
-                  ListTile(
-                    leading: Icon(
-                      call.kind == 'video' ? Icons.videocam : Icons.call,
+      backgroundColor: AppColors.scaffoldOf(context),
+      appBar: AppBar(
+        title: const Text('Calls'),
+        actions: [
+          if (_items.isNotEmpty)
+            TextButton(
+              onPressed: _clearAll,
+              child: const Text('Clear'),
+            ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _items.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 120),
+                        Center(child: Text('No calls yet')),
+                      ],
+                    )
+                  : ListView.builder(
+                      itemCount: _items.length,
+                      itemBuilder: (context, index) {
+                        final call = _items[index];
+                        final missed =
+                            call.state == 'missed' || call.state == 'rejected';
+                        return Dismissible(
+                          key: ValueKey(call.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            color: const Color(0xFFE53935),
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            child: const Icon(Icons.delete, color: Colors.white),
+                          ),
+                          onDismissed: (_) => unawaited(_deleteOne(call)),
+                          child: ListTile(
+                            leading: Icon(
+                              call.kind == 'video'
+                                  ? Icons.videocam_outlined
+                                  : ((call.outgoing ||
+                                      call.callerId == widget.currentUserId)
+                                  ? Icons.call_made
+                                  : Icons.call_received),
+                              color: missed
+                                  ? const Color(0xFFE53935)
+                                  : AppColors.accentOf(context),
+                            ),
+                            title: Text(_title(call)),
+                            subtitle: Text(_subtitle(call)),
+                            trailing: IconButton(
+                              tooltip: 'Call again',
+                              onPressed: () {
+                                Navigator.of(context).pushNamed(
+                                  AppRoutes.call,
+                                  arguments: {
+                                    'conversationId': call.conversationId,
+                                    'video': call.kind == 'video',
+                                    'outgoing': true,
+                                    'title': _title(call),
+                                  },
+                                );
+                              },
+                              icon: Icon(
+                                Icons.call_outlined,
+                                color: AppColors.accentOf(context),
+                              ),
+                            ),
+                            onTap: () {
+                              Navigator.of(context).pushNamed(
+                                AppRoutes.conversation,
+                                arguments: call.conversationId,
+                              );
+                            },
+                          ),
+                        );
+                      },
                     ),
-                    title: Text('${call.kind} · ${call.state}'),
-                    subtitle: Text(
-                      '${call.createdAt.toLocal()} · ${call.durationSeconds ?? 0}s',
-                    ),
-                  ),
-              ],
             ),
     );
   }

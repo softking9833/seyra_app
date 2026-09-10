@@ -15,7 +15,7 @@ class AuthScreenScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.isDark(context) ? AppColors.darkBg : AppColors.surface,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
@@ -29,7 +29,9 @@ class AuthScreenScaffold extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: IconButton(
                       icon: const Icon(Icons.arrow_back),
-                      color: AppColors.navy,
+                      color: AppColors.isDark(context)
+                          ? Colors.white
+                          : AppColors.navy,
                       onPressed: () => Navigator.of(context).maybePop(),
                     ),
                   )

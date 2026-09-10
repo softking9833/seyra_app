@@ -91,10 +91,10 @@ class _ChatsHomeViewState extends State<ChatsHomeView> {
                 child: ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: items.length,
-                  separatorBuilder: (_, _) => const Divider(
+                  separatorBuilder: (_, _) => Divider(
                     height: 1,
                     indent: 80,
-                    color: AppColors.fieldBorder,
+                    color: AppColors.borderOf(context),
                   ),
                   itemBuilder: (context, index) {
                     final conversation = items[index];
@@ -158,14 +158,18 @@ class _FilterTab extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: selected ? AppColors.primary : AppColors.textSecondary,
+                  color: selected
+                      ? AppColors.accentOf(context)
+                      : AppColors.hintOf(context),
                 ),
               ),
               const SizedBox(height: 6),
               Container(
                 height: 2,
                 width: 28,
-                color: selected ? AppColors.primary : Colors.transparent,
+                color: selected
+                    ? AppColors.accentOf(context)
+                    : Colors.transparent,
               ),
             ],
           ),
@@ -202,10 +206,10 @@ class _EmptyConversations extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.chat_bubble_outline,
               size: 48,
-              color: AppColors.textSecondary,
+              color: AppColors.hintOf(context),
             ),
             const SizedBox(height: 12),
             Text(
@@ -238,7 +242,7 @@ class _ChatListError extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.wifi_off, size: 48, color: AppColors.textSecondary),
+            Icon(Icons.wifi_off, size: 48, color: AppColors.hintOf(context)),
             const SizedBox(height: 12),
             Text(
               'Could not load chats',

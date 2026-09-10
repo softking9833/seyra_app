@@ -14,7 +14,7 @@ final class IoChatRealtime implements ChatRealtimePort {
   @override
   Stream<Map<String, dynamic>> connect({
     required Uri uri,
-    required String accessToken,
+    required Future<String?> Function() accessToken,
   }) {
     final events = StreamController<Map<String, dynamic>>.broadcast();
     _events = events;
@@ -25,15 +25,19 @@ final class IoChatRealtime implements ChatRealtimePort {
 
   Future<void> _listen(
     Uri uri,
-    String accessToken,
+    Future<String?> Function() accessToken,
     StreamController<Map<String, dynamic>> events,
   ) async {
     var delay = const Duration(milliseconds: 400);
     while (!events.isClosed && !_closed) {
       try {
+        final token = (await accessToken())?.trim() ?? '';
+        if (token.isEmpty) {
+          throw StateError('missing access token');
+        }
         final socket = await WebSocket.connect(
           uri.toString(),
-          headers: {'Authorization': 'Bearer $accessToken'},
+          headers: {'Authorization': 'Bearer $token'},
         );
         _socket = socket;
         delay = const Duration(milliseconds: 400);
