@@ -13,6 +13,7 @@ class MessageBubble extends StatelessWidget {
     required this.onLongPress,
     this.onTap,
     this.selected = false,
+    this.selecting = false,
     this.onRetry,
     this.onOpenAttachment,
   });
@@ -22,6 +23,7 @@ class MessageBubble extends StatelessWidget {
   final ValueChanged<Offset> onLongPress;
   final VoidCallback? onTap;
   final bool selected;
+  final bool selecting;
   final VoidCallback? onRetry;
   final VoidCallback? onOpenAttachment;
 
@@ -32,14 +34,23 @@ class MessageBubble extends StatelessWidget {
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
         padding: EdgeInsets.only(
-          left: mine ? 64 : 12,
-          right: mine ? 12 : 64,
+          left: mine ? (selecting ? 48 : 64) : 8,
+          right: mine ? 8 : (selecting ? 48 : 64),
           bottom: 8,
         ),
         child: GestureDetector(
           onTap: onTap,
           onLongPressStart: (details) => onLongPress(details.globalPosition),
-          child: Column(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (selecting && !mine) _SelectionMark(selected: selected),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width - 80,
+                ),
+                child: Column(
             crossAxisAlignment: mine
                 ? CrossAxisAlignment.end
                 : CrossAxisAlignment.start,
@@ -214,6 +225,10 @@ class MessageBubble extends StatelessWidget {
                   ),
                 ),
             ],
+                ),
+              ),
+              if (selecting && mine) _SelectionMark(selected: selected),
+            ],
           ),
         ),
       ),
@@ -243,6 +258,41 @@ class MessageBubble extends StatelessWidget {
       MessageDelivery.sent => Icons.check,
       MessageDelivery.delivered || MessageDelivery.read => Icons.done_all,
     };
+  }
+}
+
+class _SelectionMark extends StatelessWidget {
+  const _SelectionMark({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.accentOf(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: selected
+          ? Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: accent,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check, size: 14, color: Colors.white),
+            )
+          : Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.hintOf(context).withValues(alpha: 0.7),
+                  width: 2,
+                ),
+              ),
+            ),
+    );
   }
 }
 

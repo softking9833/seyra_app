@@ -481,6 +481,46 @@ void main() {
       isA<ChatUserNotFoundFailure>(),
     );
   });
+
+  test('rebinds chats when the signed-in account changes', () async {
+    final auth = _FakeAuthRemote();
+    final api = _FakeApiClient()
+      ..responses.add(
+        const ApiResponse(
+          statusCode: 200,
+          body:
+              '{"chats":[{"id":"cht_old","peer":{"id":"usr_lin","username":"lin"},"last_message_preview":"old","last_message_at":"2026-09-08T00:00:00.000Z","unread_count":0}]}',
+        ),
+      )
+      ..responses.add(
+        const ApiResponse(
+          statusCode: 200,
+          body:
+              '{"chats":[{"id":"cht_new","peer":{"id":"usr_ada","username":"ada"},"last_message_preview":"new","last_message_at":"2026-09-08T00:00:00.000Z","unread_count":0}]}',
+        ),
+      );
+    final storage = MemorySecureStorage();
+    await storage.write(key: AuthSecureStorageKeys.accessToken, value: 'token');
+    final source = HttpChatDataSource(
+      apiClient: api,
+      secureStorage: storage,
+      authRemote: auth,
+      baseUrl: Uri.parse('http://127.0.0.1:8080'),
+      realtime: _FakeRealtime(),
+    );
+    final repository = ChatRepositoryImpl(dataSource: source);
+
+    final first = await repository.watchConversations().first;
+    expect(first.single.id, 'cht_old');
+    expect(repository.currentUserId, 'usr_ada');
+
+    auth.id = 'usr_new';
+    auth.username = 'newbie';
+    final second = await repository.watchConversations().first;
+    expect(repository.currentUserId, 'usr_new');
+    expect(second.single.id, 'cht_new');
+    expect(second.single.title, 'ada');
+  });
 }
 
 final class _FakeApiClient implements ApiClient {
@@ -548,11 +588,14 @@ final class _FakeRealtime implements ChatRealtimePort {
 }
 
 final class _FakeAuthRemote implements AuthRemoteDataSource {
+  String id = 'usr_ada';
+  String username = 'ada';
+
   @override
   Future<CurrentAccountModel> getCurrentAccount() async {
     return CurrentAccountModel(
-      id: 'usr_ada',
-      username: 'ada',
+      id: id,
+      username: username,
       createdAt: DateTime.utc(2026, 1, 1),
     );
   }

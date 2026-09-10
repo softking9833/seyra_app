@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:seyra/core/errors/result.dart';
@@ -52,7 +54,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Reply'), findsOneWidget);
     expect(find.text('Copy'), findsOneWidget);
-    await tester.tap(find.text('Delete'));
+    await tester.tap(find.byKey(const Key('message_action_delete')));
     await tester.pumpAndSettle();
     expect(find.text('Delete message?'), findsOneWidget);
     await tester.tap(find.byKey(const Key('confirm_delete_message')));
@@ -60,11 +62,89 @@ void main() {
     expect(repo.deletedId, 'msg_mine');
     expect(repo.activeId, 'cht_1');
   });
+
+  testWidgets('long press then dismiss shows delete selection chrome', (
+    tester,
+  ) async {
+    final repo = _ConversationRepo();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: ConversationPage(
+          conversationId: 'cht_1',
+          watchConversations: WatchConversationsUseCase(repo),
+          watchMessages: WatchMessagesUseCase(repo),
+          watchPeerTyping: WatchPeerTypingUseCase(repo),
+          sendMessage: SendMessageUseCase(repo),
+          retryMessage: RetryMessageUseCase(repo),
+          deleteMessage: DeleteMessageUseCase(repo),
+          reactToMessage: ReactToMessageUseCase(repo),
+          markConversationRead: MarkConversationReadUseCase(repo),
+          clearConversation: ClearConversationUseCase(repo),
+          setMuted: SetConversationMutedUseCase(repo),
+          setActiveConversation: SetActiveConversationUseCase(
+            repo.setActiveConversation,
+          ),
+          currentUserId: 'usr_ada',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('delete me'));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(12, 12));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete messages'), findsOneWidget);
+    expect(find.text('1 message selected'), findsOneWidget);
+    expect(find.text('Delete (1)'), findsOneWidget);
+    expect(find.byKey(const Key('composer_text_field')), findsNothing);
+  });
+
+  testWidgets('double tapping send only sends once', (tester) async {
+    final repo = _ConversationRepo();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: ConversationPage(
+          conversationId: 'cht_1',
+          watchConversations: WatchConversationsUseCase(repo),
+          watchMessages: WatchMessagesUseCase(repo),
+          watchPeerTyping: WatchPeerTypingUseCase(repo),
+          sendMessage: SendMessageUseCase(repo),
+          retryMessage: RetryMessageUseCase(repo),
+          deleteMessage: DeleteMessageUseCase(repo),
+          reactToMessage: ReactToMessageUseCase(repo),
+          markConversationRead: MarkConversationReadUseCase(repo),
+          clearConversation: ClearConversationUseCase(repo),
+          setMuted: SetConversationMutedUseCase(repo),
+          setActiveConversation: SetActiveConversationUseCase(
+            repo.setActiveConversation,
+          ),
+          currentUserId: 'usr_ada',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('composer_text_field')), 'hi');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('composer_send_button')));
+    await tester.tap(find.byKey(const Key('composer_send_button')));
+    await tester.pump();
+    expect(repo.sendCalls, 1);
+    repo.sendGate.complete();
+    await tester.pumpAndSettle();
+    expect(repo.sendCalls, 1);
+  });
 }
 
 final class _ConversationRepo with ChatRoomRepositoryStub implements ChatRepository {
   String? deletedId;
   String? activeId;
+  var sendCalls = 0;
+  final sendGate = Completer<void>();
 
   static final _conversation = Conversation(
     id: 'cht_1',
@@ -159,7 +239,18 @@ final class _ConversationRepo with ChatRoomRepositoryStub implements ChatReposit
     String? replyToId,
     String? attachmentId,
   }) async {
-    throw UnimplementedError();
+    sendCalls += 1;
+    await sendGate.future;
+    return Success(
+      ChatMessage(
+        id: 'msg_sent_$sendCalls',
+        conversationId: conversationId,
+        senderId: currentUserId,
+        body: body,
+        sentAt: DateTime.utc(2026, 9, 8, 12),
+        delivery: MessageDelivery.sent,
+      ),
+    );
   }
 
   @override

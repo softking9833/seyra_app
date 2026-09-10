@@ -432,12 +432,25 @@ func (s *Service) summaryFor(ctx context.Context, actorID, conversationID string
 }
 
 func (s *Service) publishMembers(ctx context.Context, conversationID string, event Event) {
+	s.publishMembersExcept(ctx, conversationID, "", event)
+}
+
+func (s *Service) publishMembersExcept(ctx context.Context, conversationID, exceptID string, event Event) {
 	if s.realtime == nil {
 		return
 	}
 	ids, err := s.store.MemberIDs(ctx, conversationID)
 	if err != nil {
 		return
+	}
+	if exceptID != "" {
+		filtered := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if id != exceptID {
+				filtered = append(filtered, id)
+			}
+		}
+		ids = filtered
 	}
 	s.realtime.Publish(ids, event)
 }

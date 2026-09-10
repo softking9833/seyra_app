@@ -47,6 +47,7 @@ class ConversationPage extends StatefulWidget {
     required this.setMuted,
     required this.setActiveConversation,
     required this.currentUserId,
+    this.resolveCurrentUserId,
     this.social,
     this.onOpenDetails,
   });
@@ -64,6 +65,7 @@ class ConversationPage extends StatefulWidget {
   final SetConversationMutedUseCase setMuted;
   final SetActiveConversationUseCase setActiveConversation;
   final String currentUserId;
+  final String Function()? resolveCurrentUserId;
   final ChatSocialRepository? social;
   final ValueChanged<Conversation>? onOpenDetails;
 
@@ -72,6 +74,7 @@ class ConversationPage extends StatefulWidget {
 }
 
 class _ConversationPageState extends State<ConversationPage> {
+  String get _viewerId => widget.resolveCurrentUserId?.call() ?? widget.currentUserId;
   final _composer = TextEditingController();
   bool _hasText = false;
   ChatMessage? _replyTo;
@@ -87,8 +90,8 @@ class _ConversationPageState extends State<ConversationPage> {
   UploadCancelToken? _uploadCancel;
   _PendingUpload? _failedUpload;
   var _selectedIds = <String>{};
+  var _sending = false;
   var _cachedMessages = const <ChatMessage>[];
-  var _allConversations = const <Conversation>[];
 
   static const _emojis = ['😀', '😂', '😍', '👍', '🔥', '🎉', '💙', '🙏'];
 
@@ -291,7 +294,6 @@ class _ConversationPageState extends State<ConversationPage> {
           }
         }
         _cachedConversation = conversation;
-        _allConversations = conversationSnapshot.data ?? const [];
         _maybeLoadPresence(conversation);
 
         return StreamBuilder<List<ChatMessage>>(
@@ -311,7 +313,7 @@ class _ConversationPageState extends State<ConversationPage> {
                   },
                   child: Scaffold(
                   backgroundColor: AppColors.scaffoldOf(context),
-                  appBar: _selectedIds.length > 1
+                  appBar: _selectedIds.isNotEmpty
                       ? _selectionBar()
                       : _appBar(conversation, typing),
                   body: Column(
@@ -349,7 +351,7 @@ class _ConversationPageState extends State<ConversationPage> {
                       Expanded(
                         child: _MessageHistory(
                           messages: _cachedMessages,
-                          currentUserId: widget.currentUserId,
+                          currentUserId: _viewerId,
                           typing: typing,
                           selectedIds: _selectedIds,
                           onTap: _onMessageTap,
@@ -358,10 +360,11 @@ class _ConversationPageState extends State<ConversationPage> {
                           onOpenAttachment: _openAttachment,
                         ),
                       ),
-                      if (_selectedIds.length <= 1)
+                      if (_selectedIds.isEmpty)
                         MessageComposer(
                         controller: _composer,
                         hasText: _hasText,
+                        sending: _sending,
                         replyTo: _replyTo,
                         onChanged: (value) {
                           setState(() => _hasText = value.trim().isNotEmpty);
@@ -381,7 +384,9 @@ class _ConversationPageState extends State<ConversationPage> {
                           );
                         },
                         onCancelReply: () => setState(() => _replyTo = null),
-                      ),
+                      )
+                      else
+                        _deleteSelectionFooter(),
                     ],
                   ),
                 ),
@@ -395,29 +400,92 @@ class _ConversationPageState extends State<ConversationPage> {
   }
 
   PreferredSizeWidget _selectionBar() {
+    final count = _selectedIds.length;
+    final accent = AppColors.accentOf(context);
     return AppBar(
       leading: IconButton(
-        tooltip: 'Cancel',
+        tooltip: 'Close',
         onPressed: _clearSelection,
         icon: const Icon(Icons.close),
       ),
-      title: Text('${_selectedIds.length}'),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Delete messages',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            count == 1
+                ? '1 message selected'
+                : '$count messages selected',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: AppColors.hintOf(context),
+            ),
+          ),
+        ],
+      ),
       actions: [
-        IconButton(
-          tooltip: 'Forward',
-          onPressed: _forwardSelected,
-          icon: const Icon(Icons.forward_rounded),
-        ),
         IconButton(
           tooltip: 'Delete',
           onPressed: () => unawaited(_deleteSelected()),
           icon: const Icon(Icons.delete_outline),
         ),
         TextButton(
-          onPressed: _clearSelection,
-          child: const Text('Cancel'),
+          key: const Key('selection_appbar_delete'),
+          onPressed: () => unawaited(_deleteSelected()),
+          child: Text(
+            'Delete',
+            style: TextStyle(
+              color: accent,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _deleteSelectionFooter() {
+    final count = _selectedIds.length;
+    final accent = AppColors.accentOf(context);
+    return Material(
+      color: AppColors.scaffoldOf(context),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Row(
+            children: [
+              TextButton(
+                onPressed: _clearSelection,
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(
+                    color: accent,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                key: const Key('selection_footer_delete'),
+                onPressed: () => unawaited(_deleteSelected()),
+                icon: const Icon(Icons.delete_outline, size: 20),
+                label: Text('Delete ($count)'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  shape: const StadiumBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -453,11 +521,12 @@ class _ConversationPageState extends State<ConversationPage> {
       return;
     }
     setState(() => _selectedIds = {message.id});
-    final mine = message.isFrom(widget.currentUserId);
+    final mine = message.isFrom(_viewerId);
     var keepSelection = true;
     await showGeneralDialog<void>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
       barrierColor: Colors.transparent,
       pageBuilder: (context, animation, secondaryAnimation) {
         return MessageActionPopup(
@@ -551,7 +620,7 @@ class _ConversationPageState extends State<ConversationPage> {
     final target = ids ?? _selectedIds;
     final deletable = target.where((id) {
       final message = _messageById(id);
-      return message != null && message.isFrom(widget.currentUserId);
+      return message != null && message.isFrom(_viewerId);
     }).toList();
     if (deletable.isEmpty) {
       if (mounted) {
@@ -584,61 +653,6 @@ class _ConversationPageState extends State<ConversationPage> {
       }
     }
     _clearSelection();
-  }
-
-  Future<void> _forwardSelected() async {
-    final social = widget.social;
-    if (social == null) {
-      _comingSoon('Forward');
-      return;
-    }
-    final destinations = _allConversations
-        .where((item) => item.id != widget.conversationId)
-        .toList();
-    if (destinations.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No other chats to forward to')),
-      );
-      return;
-    }
-    final picked = await showDialog<Conversation>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E232E),
-          title: const Text('Forward to', style: TextStyle(color: Colors.white)),
-          content: SizedBox(
-            width: 320,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                for (final conversation in destinations)
-                  ListTile(
-                    title: Text(
-                      conversation.title,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    onTap: () => Navigator.pop(context, conversation),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    if (picked == null) {
-      return;
-    }
-    for (final id in _selectedIds) {
-      await social.forwardMessage(
-        sourceId: widget.conversationId,
-        messageId: id,
-        destinationId: picked.id,
-      );
-    }
-    if (mounted) {
-      _clearSelection();
-    }
   }
 
   PreferredSizeWidget _appBar(Conversation? conversation, bool typing) {
@@ -786,8 +800,21 @@ class _ConversationPageState extends State<ConversationPage> {
   }
 
   Future<void> _send() async {
+    if (_sending) {
+      return;
+    }
     final body = _composer.text;
+    if (body.trim().isEmpty) {
+      return;
+    }
     final replyToId = _replyTo?.id;
+    _sending = true;
+    setState(() {
+      _hasText = false;
+      _replyTo = null;
+    });
+    _composer.clear();
+    unawaited(_persistDraft(''));
     final result = await widget.sendMessage(
       conversationId: widget.conversationId,
       body: body,
@@ -796,19 +823,15 @@ class _ConversationPageState extends State<ConversationPage> {
     if (!mounted) {
       return;
     }
-    if (result is Success<ChatMessage>) {
-      _composer.clear();
-      setState(() {
-        _hasText = false;
-        _replyTo = null;
-      });
-      unawaited(_persistDraft(''));
-    } else if (result is FailureResult<ChatMessage>) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.failure.message)),
-        );
+    setState(() => _sending = false);
+    if (result is FailureResult<ChatMessage>) {
+      if (_composer.text.isEmpty) {
+        _composer.text = body;
+        setState(() => _hasText = true);
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.failure.message)),
+      );
     }
   }
 
@@ -949,6 +972,13 @@ class _ConversationPageState extends State<ConversationPage> {
   Future<void> _openCall({required bool video}) async {
     if (widget.social == null) {
       _comingSoon(video ? 'Video calls' : 'Voice calls');
+      return;
+    }
+    final peerId = _cachedConversation?.peerId ?? '';
+    if (peerId.isEmpty || peerId == _viewerId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Calls need the other person in this chat')),
+      );
       return;
     }
     await Navigator.of(context).pushNamed(
@@ -1159,6 +1189,7 @@ class _MessageHistory extends StatelessWidget {
           message: message,
           currentUserId: currentUserId,
           selected: selectedIds.contains(message.id),
+          selecting: selectedIds.isNotEmpty,
           onTap: () => onTap(message),
           onLongPress: (anchor) => onLongPress(message, anchor),
           onRetry: message.delivery == MessageDelivery.failed

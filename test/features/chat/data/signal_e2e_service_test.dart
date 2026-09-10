@@ -73,5 +73,8 @@ void main() {
     expect(await alice.decrypt(peerUserId: 'bob', ciphertext: cipher), 'hi');
     final second = await bob.encrypt(peerUserId: 'alice', plaintext: 'again');
     expect(await alice.decrypt(peerUserId: 'bob', ciphertext: second!), 'again');
+    final reply = await alice.encrypt(peerUserId: 'bob', plaintext: 'hello back');
+    expect(reply, isNotNull);
+    expect(await bob.decrypt(peerUserId: 'alice', ciphertext: reply!), 'hello back');
   });
 }

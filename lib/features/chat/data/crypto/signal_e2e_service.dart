@@ -9,12 +9,14 @@ import 'package:seyra/core/storage/secure_storage.dart';
 /// Session/ratchet state, one-time prekeys, and signed prekeys are also
 /// persisted in SecureStorage so encrypt/decrypt survives process death.
 final class SignalE2eService {
-  SignalE2eService(this._storage);
+  SignalE2eService(this._storage, {this.userId = ''});
 
   final SecureStorage _storage;
+  final String userId;
   InMemorySignalProtocolStore? _store;
   int _registrationId = 0;
   String _deviceId = '1';
+  var _identityWasNew = false;
 
   String get deviceId => _deviceId;
 
@@ -22,13 +24,37 @@ final class SignalE2eService {
     if (_store != null) {
       return;
     }
-    final existing = await _storage.read(_identityKey);
+    var existing = await _storage.read(_identityKey);
+    if ((existing == null || existing.isEmpty) && userId.isNotEmpty) {
+      final owner = await _storage.read('seyra.e2e.owner');
+      if (owner == null || owner == userId) {
+        existing = await _storage.read('seyra.e2e.identity');
+        if (existing != null && existing.isNotEmpty) {
+          await _storage.write(key: _identityKey, value: existing);
+          await _storage.write(
+            key: _regKey,
+            value: await _storage.read('seyra.e2e.registration') ?? '1',
+          );
+          await _storage.write(
+            key: _deviceKey,
+            value: await _storage.read('seyra.e2e.device') ?? '1',
+          );
+          final legacyState = await _storage.read('seyra.e2e.protocol_state');
+          if (legacyState != null && legacyState.isNotEmpty) {
+            await _storage.write(key: _stateKey, value: legacyState);
+          }
+          await _storage.write(key: 'seyra.e2e.owner', value: userId);
+        }
+      }
+    }
     final IdentityKeyPair identity;
     if (existing != null && existing.isNotEmpty) {
       identity = IdentityKeyPair.fromSerialized(base64Decode(existing));
       _registrationId = int.parse(await _storage.read(_regKey) ?? '1');
       _deviceId = await _storage.read(_deviceKey) ?? '1';
+      _identityWasNew = false;
     } else {
+      _identityWasNew = true;
       identity = generateIdentityKeyPair();
       _registrationId = generateRegistrationId(false);
       _deviceId = '1';
@@ -38,6 +64,12 @@ final class SignalE2eService {
       );
       await _storage.write(key: _regKey, value: '$_registrationId');
       await _storage.write(key: _deviceKey, value: _deviceId);
+      if (userId.isNotEmpty) {
+        final owner = await _storage.read('seyra.e2e.owner');
+        if (owner == null) {
+          await _storage.write(key: 'seyra.e2e.owner', value: userId);
+        }
+      }
     }
     _store = InMemorySignalProtocolStore(identity, _registrationId);
     await _restoreState();
@@ -54,12 +86,18 @@ final class SignalE2eService {
       signed = generateSignedPreKey(identity, 1);
       await store.storeSignedPreKey(signed.id, signed);
     }
+    if (store.preKeyStore.store.isEmpty && !_identityWasNew) {
+      await _restoreState();
+    }
     if (store.preKeyStore.store.length < 20) {
       var nextId = 1;
       for (final id in store.preKeyStore.store.keys) {
         if (id >= nextId) {
           nextId = id + 1;
         }
+      }
+      if (nextId == 1 && !_identityWasNew) {
+        nextId = 1000;
       }
       final need = 80 - store.preKeyStore.store.length;
       if (need > 0) {
@@ -155,30 +193,19 @@ final class SignalE2eService {
     final address = SignalProtocolAddress(peerUserId, 1);
     final cipher = SessionCipher.fromStore(_store!, address);
     final raw = base64Decode(ciphertext);
-    if (_isPreKeyPayload(raw)) {
+    final hasSession = await _store!.containsSession(address);
+    if (hasSession) {
       try {
-        final bytes = await cipher.decrypt(PreKeySignalMessage(raw));
+        final bytes = await cipher.decryptFromSignal(
+          SignalMessage.fromSerialized(raw),
+        );
         await _persistState();
         return utf8.decode(bytes);
-      } catch (_) {
-        // Payload sniffed as prekey but decrypt failed; try Whisper.
-      }
+      } catch (_) {}
     }
-    final bytes = await cipher.decryptFromSignal(
-      SignalMessage.fromSerialized(raw),
-    );
+    final bytes = await cipher.decrypt(PreKeySignalMessage(raw));
     await _persistState();
     return utf8.decode(bytes);
-  }
-
-  bool _isPreKeyPayload(Uint8List raw) {
-    try {
-      final message = PreKeySignalMessage(raw);
-      return message.getSignedPreKeyId() >= 0 &&
-          message.getWhisperMessage().serialize().isNotEmpty;
-    } catch (_) {
-      return false;
-    }
   }
 
   static int _jsonInt(Object? value) {
@@ -281,8 +308,15 @@ final class SignalE2eService {
     }
   }
 
-  static const _identityKey = 'seyra.e2e.identity';
-  static const _regKey = 'seyra.e2e.registration';
-  static const _deviceKey = 'seyra.e2e.device';
-  static const _stateKey = 'seyra.e2e.protocol_state';
+  String get _identityKey => _scoped('seyra.e2e.identity');
+  String get _regKey => _scoped('seyra.e2e.registration');
+  String get _deviceKey => _scoped('seyra.e2e.device');
+  String get _stateKey => _scoped('seyra.e2e.protocol_state');
+
+  String _scoped(String base) {
+    if (userId.isEmpty) {
+      return base;
+    }
+    return '$base.$userId';
+  }
 }

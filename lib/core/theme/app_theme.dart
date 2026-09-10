@@ -82,17 +82,17 @@ abstract final class AppTheme {
         foregroundColor: Colors.white,
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((states) {
-          return Colors.white;
-        }),
+        thumbColor: WidgetStateProperty.all(Colors.white),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return accent;
           }
           return brightness == Brightness.dark
-              ? AppColors.darkDivider
-              : AppColors.fieldBorder;
+              ? const Color(0xFF3A3F4B)
+              : const Color(0xFFE5E7EB);
         }),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+        trackOutlineWidth: WidgetStateProperty.all(0),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: scaffold,

@@ -57,6 +57,7 @@ final class ChatMessage {
 
   ChatMessage copyWith({
     String? id,
+    String? body,
     MessageDelivery? delivery,
     String? replyPreview,
     List<MessageReaction>? reactions,
@@ -71,7 +72,7 @@ final class ChatMessage {
       id: id ?? this.id,
       conversationId: conversationId,
       senderId: senderId,
-      body: body,
+      body: body ?? this.body,
       sentAt: sentAt,
       delivery: delivery ?? this.delivery,
       replyToId: replyToId,

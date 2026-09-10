@@ -91,6 +91,11 @@ class _ShellHomePageState extends State<ShellHomePage> {
           return;
         }
         if (action == 'offer') {
+          final callerId = payload['caller_id'] as String? ?? '';
+          final me = _session?.user.id ?? AppDependencies.chatRepository.currentUserId;
+          if (callerId.isNotEmpty && callerId == me) {
+            return;
+          }
           unawaited(_promptIncomingCall(payload));
         }
       });

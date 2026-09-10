@@ -183,6 +183,25 @@ void main() {
     );
     expectDarkChrome(tester);
   });
+
+  testWidgets('light theme switch has no black track outline', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: Switch(value: false, onChanged: (_) {}),
+        ),
+      ),
+    );
+    final theme = Theme.of(tester.element(find.byType(Switch))).switchTheme;
+    expect(theme.trackOutlineColor?.resolve(const {}), Colors.transparent);
+    expect(theme.trackOutlineWidth?.resolve(const {}), 0);
+    expect(
+      theme.trackColor?.resolve(const {}),
+      const Color(0xFFE5E7EB),
+    );
+    expect(theme.thumbColor?.resolve(const {}), Colors.white);
+  });
 }
 
 final class _SearchRepo with ChatRoomRepositoryStub implements ChatRepository {

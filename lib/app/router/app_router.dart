@@ -61,6 +61,8 @@ abstract final class AppRouter {
             setMuted: AppDependencies.setConversationMutedUseCase,
             setActiveConversation: AppDependencies.setActiveConversationUseCase,
             currentUserId: AppDependencies.chatRepository.currentUserId,
+            resolveCurrentUserId: () =>
+                AppDependencies.chatRepository.currentUserId,
             social: AppDependencies.chatSocial,
             onOpenDetails: (conversation) {
               Navigator.of(context).pushNamed(

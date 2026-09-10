@@ -368,7 +368,10 @@ func (s *Service) StartCall(ctx context.Context, actorID, conversationID, kind s
 	payload["caller_id"] = actorID
 	payload["kind"] = kind
 	payload["action"] = "offer"
-	s.publishMembers(ctx, conversationID, Event{Type: EventCallSignal, Payload: payload})
+	if caller, err := s.directory.LookupID(ctx, actorID); err == nil {
+		payload["username"] = caller.Username
+	}
+	s.publishMembersExcept(ctx, conversationID, actorID, Event{Type: EventCallSignal, Payload: payload})
 	return call, nil
 }
 

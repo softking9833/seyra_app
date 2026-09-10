@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:seyra/core/theme/app_colors.dart';
 import 'package:seyra/features/chat/domain/entities/chat_message.dart';
 
-class MessageComposer extends StatelessWidget {
+class MessageComposer extends StatefulWidget {
   const MessageComposer({
     super.key,
     required this.controller,
@@ -14,21 +14,45 @@ class MessageComposer extends StatelessWidget {
     required this.onEmoji,
     required this.onMic,
     required this.onCancelReply,
+    this.sending = false,
   });
 
   final TextEditingController controller;
   final bool hasText;
+  final bool sending;
   final ChatMessage? replyTo;
   final ValueChanged<String> onChanged;
-  final VoidCallback onSend;
+  final Future<void> Function() onSend;
   final VoidCallback onAttach;
   final VoidCallback onEmoji;
   final VoidCallback onMic;
   final VoidCallback onCancelReply;
 
   @override
+  State<MessageComposer> createState() => _MessageComposerState();
+}
+
+class _MessageComposerState extends State<MessageComposer> {
+  var _busy = false;
+
+  Future<void> _handleSend() async {
+    if (_busy || widget.sending) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.onSend();
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final sending = _busy || widget.sending;
     return Material(
       color: AppColors.scaffoldOf(context),
       elevation: 8,
@@ -38,7 +62,7 @@ class MessageComposer extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (replyTo != null)
+            if (widget.replyTo != null)
               Container(
                 margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                 padding: const EdgeInsets.all(10),
@@ -55,14 +79,14 @@ class MessageComposer extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        replyTo!.body,
+                        widget.replyTo!.body,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     IconButton(
                       key: const Key('composer_cancel_reply'),
-                      onPressed: onCancelReply,
+                      onPressed: widget.onCancelReply,
                       icon: const Icon(Icons.close, size: 18),
                     ),
                   ],
@@ -74,7 +98,7 @@ class MessageComposer extends StatelessWidget {
                 IconButton(
                   key: const Key('composer_attach_button'),
                   tooltip: 'Attach',
-                  onPressed: onAttach,
+                  onPressed: widget.onAttach,
                   icon: const Icon(Icons.add_circle_outline),
                 ),
                 Expanded(
@@ -90,16 +114,17 @@ class MessageComposer extends StatelessWidget {
                         IconButton(
                           key: const Key('composer_emoji_button'),
                           tooltip: 'Emoji',
-                          onPressed: onEmoji,
+                          onPressed: widget.onEmoji,
                           icon: const Icon(Icons.emoji_emotions_outlined),
                         ),
                         Expanded(
                           child: TextField(
                             key: const Key('composer_text_field'),
-                            controller: controller,
+                            controller: widget.controller,
                             minLines: 1,
                             maxLines: 5,
-                            onChanged: onChanged,
+                            onChanged: widget.onChanged,
+                            enabled: !sending,
                             textCapitalization: TextCapitalization.sentences,
                             decoration: const InputDecoration(
                               hintText: 'Message',
@@ -120,21 +145,30 @@ class MessageComposer extends StatelessWidget {
                 const SizedBox(width: 4),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 2),
-                  child: hasText
+                  child: widget.hasText
                       ? IconButton.filled(
                           key: const Key('composer_send_button'),
                           tooltip: 'Send',
-                          onPressed: onSend,
+                          onPressed: sending ? null : _handleSend,
                           style: IconButton.styleFrom(
                             backgroundColor: AppColors.accentOf(context),
                             foregroundColor: Colors.white,
                           ),
-                          icon: const Icon(Icons.send_rounded),
+                          icon: sending
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.send_rounded),
                         )
                       : IconButton(
                           key: const Key('composer_mic_button'),
                           tooltip: 'Voice message',
-                          onPressed: onMic,
+                          onPressed: widget.onMic,
                           icon: const Icon(Icons.mic_none_outlined),
                         ),
                 ),

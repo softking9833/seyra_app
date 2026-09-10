@@ -360,3 +360,49 @@ func TestBotGrantsForwardBundleAndE2EEdit(t *testing.T) {
 		t.Fatalf("forwarding attachment messages should be forbidden, got %v", err)
 	}
 }
+
+func TestStartCallDoesNotRingCaller(t *testing.T) {
+	ctx := context.Background()
+	users := auth.NewMemoryStore()
+	created := time.Now().UTC()
+	ada := auth.User{ID: "usr_ada", Username: "ada", PasswordHash: "x", CreatedAt: created}
+	lin := auth.User{ID: "usr_lin", Username: "lin", PasswordHash: "x", CreatedAt: created}
+	if err := users.CreateUser(ctx, ada); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.CreateUser(ctx, lin); err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub()
+	svc := NewService(NewMemoryStore(), NewAuthDirectory(users), hub)
+	conv, err := svc.CreateDirect(ctx, ada.ID, "lin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	adaCh, unsubAda := hub.Subscribe(ada.ID)
+	defer unsubAda()
+	linCh, unsubLin := hub.Subscribe(lin.ID)
+	defer unsubLin()
+	if _, err := svc.StartCall(ctx, ada.ID, conv.ID, "voice", map[string]any{"sdp": "offer"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case evt := <-adaCh:
+		t.Fatalf("caller received their own ring: %s", evt.Type)
+	case <-time.After(80 * time.Millisecond):
+	}
+	select {
+	case evt := <-linCh:
+		if evt.Type != EventCallSignal {
+			t.Fatalf("peer event %s", evt.Type)
+		}
+		if evt.Payload["caller_id"] != ada.ID {
+			t.Fatalf("caller_id %v", evt.Payload["caller_id"])
+		}
+		if evt.Payload["username"] != "ada" {
+			t.Fatalf("peer username %v", evt.Payload["username"])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("peer did not receive the call")
+	}
+}
